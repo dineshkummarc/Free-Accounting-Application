@@ -59,21 +59,23 @@ class ApiAuthenticator {
         return $tenant;
     }
 
-    private static function validateKeyHash(PDO $pdo, string $keyHash, string $requiredScope = ''): array {
+    private static function validateKeyHash(PDO $pdo, string $rawKeyOrHash, string $requiredScope = ''): array {
+        $keyHash = (strlen($rawKeyOrHash) === 64 && ctype_xdigit($rawKeyOrHash)) ? $rawKeyOrHash : hash('sha256', $rawKeyOrHash);
 
         // Enforce 120 req/min rate limit per API Key
         if (!\Core\SecurityThrottle::checkRateLimit('api_' . $keyHash, 120, 60)) {
             self::respondJson(false, 'Too Many Requests. API key rate limit exceeded (120 requests per minute).', [], 429);
         }
 
-        // 1. Query scoped api_keys table strictly by SHA-256 key_hash
+        // 1. Query scoped api_keys table by key_hash, api_key, or key_prefix
+        $prefixMatch = (strlen($rawKeyOrHash) >= 12) ? (substr($rawKeyOrHash, 0, 16) . '%') : 'INVALID_PREFIX';
         $st = $pdo->prepare("
             SELECT ak.*, t.id as tenant_id, t.name as tenant_name, t.status as tenant_status
             FROM api_keys ak
             JOIN tenants t ON t.id = ak.tenant_id
-            WHERE ak.key_hash = ?
+            WHERE ak.key_hash = ? OR ak.api_key = ? OR ak.key_prefix LIKE ?
         ");
-        $st->execute([$keyHash]);
+        $st->execute([$keyHash, $rawKeyOrHash, $prefixMatch]);
         $keyRow = $st->fetch();
 
         if (!$keyRow) {
