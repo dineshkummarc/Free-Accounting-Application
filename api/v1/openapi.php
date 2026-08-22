@@ -13,7 +13,7 @@ $scriptDir = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
 $token = trim($_GET['token'] ?? $_GET['api_key'] ?? '');
 
 $serverHost = "{$protocol}://{$host}";
-$mcpPath = "{$scriptDir}/mcp.php";
+$mcpUrl = "{$serverHost}{$scriptDir}/mcp.php" . (!empty($token) ? "?token=" . urlencode($token) : "");
 
 $schema = [
     'openapi' => '3.1.0',
@@ -24,26 +24,15 @@ $schema = [
     ],
     'servers' => [
         [
-            'url' => $serverHost
+            'url' => $mcpUrl,
+            'description' => 'OneSol MCP Direct API Endpoint'
         ]
     ],
     'paths' => [
-        $mcpPath => [
+        '/' => [
             'post' => [
                 'summary' => 'Execute MCP Tool or JSON-RPC Query',
                 'operationId' => 'executeMcpTool',
-                'parameters' => [
-                    [
-                        'name' => 'token',
-                        'in' => 'query',
-                        'required' => true,
-                        'description' => 'Tenant MCP Authentication Token',
-                        'schema' => [
-                            'type' => 'string',
-                            'default' => $token
-                        ]
-                    ]
-                ],
                 'requestBody' => [
                     'required' => true,
                     'content' => [
@@ -51,8 +40,8 @@ $schema = [
                             'schema' => [
                                 'type' => 'object',
                                 'properties' => [
-                                    'jsonrpc' => ['type' => 'string', 'example' => '2.0'],
-                                    'id' => ['type' => 'integer', 'example' => 1],
+                                    'jsonrpc' => ['type' => 'string', 'default' => '2.0'],
+                                    'id' => ['type' => 'integer', 'default' => 1],
                                     'method' => ['type' => 'string', 'example' => 'tools/call'],
                                     'params' => [
                                         'type' => 'object',
@@ -72,6 +61,20 @@ $schema = [
                     ]
                 ]
             ]
+        ]
+    ],
+    'components' => [
+        'securitySchemes' => [
+            'ApiKeyAuth' => [
+                'type' => 'apiKey',
+                'in' => 'query',
+                'name' => 'token'
+            ]
+        ]
+    ],
+    'security' => [
+        [
+            'ApiKeyAuth' => []
         ]
     ]
 ];
