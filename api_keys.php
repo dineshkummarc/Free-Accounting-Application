@@ -121,6 +121,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('api_keys');
     }
 
+    // ROTATE API KEY
+    if ($action === 'rotate_key') {
+        $keyId = (int)($_POST['key_id'] ?? 0);
+        $stKey = $pdo->prepare("SELECT * FROM api_keys WHERE id = ? AND tenant_id = ?");
+        $stKey->execute([$keyId, $tid]);
+        $existingKey = $stKey->fetch();
+
+        if (!$existingKey) {
+            flash('error', 'API key not found.');
+        } else {
+            $rawKey     = 'os_live_' . bin2hex(random_bytes(20));
+            $keyHash    = hash('sha256', $rawKey);
+            $keyPrefix  = substr($rawKey, 0, 16) . '...';
+
+            try {
+                $stUpd = $pdo->prepare("UPDATE api_keys SET key_hash = ?, key_prefix = ?, api_key = ?, is_active = 1 WHERE id = ? AND tenant_id = ?");
+                $stUpd->execute([$keyHash, $keyPrefix, $rawKey, $keyId, $tid]);
+            } catch (\PDOException $e) {
+                try {
+                    $stUpd = $pdo->prepare("UPDATE api_keys SET api_key = ?, is_active = 1 WHERE id = ? AND tenant_id = ?");
+                    $stUpd->execute([$rawKey, $keyId, $tid]);
+                } catch (\PDOException $e2) {}
+            }
+
+            // Sync with settings if it's the direct MCP token key
+            if ($existingKey['name'] === 'One-Click AI Connection Key' || (!empty($existingKey['key_hash']) && $existingKey['key_hash'] === $mcpDirectHash)) {
+                try {
+                    $stSet = $pdo->prepare("INSERT INTO settings (tenant_id, setting_key, setting_value) VALUES (?, 'mcp_direct_token', ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+                    $stSet->execute([$tid, $rawKey]);
+                } catch (\Throwable $e) {}
+            }
+
+            $newKeyPlain = $rawKey;
+            flash('success', "API Key '<strong>" . htmlspecialchars($existingKey['name']) . "</strong>' rotated successfully. Copy your new secret key below.");
+        }
+    }
+
     // DELETE KEY
     if ($action === 'delete_key') {
         $keyId = (int)($_POST['key_id'] ?? 0);
@@ -305,7 +342,15 @@ function copyNewKey() {
                             <i class="fa-solid fa-copy mr-1"></i>Copy Key
                         </button>
                         <?php else: ?>
-                        <span class="text-2xs text-slate-400">Full key stored as secure SHA-256 hash</span>
+                        <form method="post" class="inline" onsubmit="return confirm('Rotate key secret now? A new key secret will be generated.')">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="action" value="rotate_key">
+                            <input type="hidden" name="key_id" value="<?= $k['id'] ?>">
+                            <button type="submit" class="inline-flex items-center px-2.5 py-1 text-2xs font-extrabold text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-lg shadow-2xs transition-all cursor-pointer">
+                                <i class="fa-solid fa-arrows-rotate mr-1 text-amber-600"></i>Rotate Key Secret
+                            </button>
+                        </form>
+                        <span class="text-2xs text-slate-400">(Hashed on creation — rotate to reveal new key)</span>
                         <?php endif; ?>
                     </div>
 
@@ -350,6 +395,14 @@ function copyNewKey() {
                     <button type="button" onclick="document.getElementById('edit-key-modal-<?= $k['id'] ?>').classList.remove('hidden')" class="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 transition-all cursor-pointer">
                         <i class="fa-solid fa-pen-to-square mr-1"></i>Edit Scopes
                     </button>
+                    <form method="post" onsubmit="return confirm('Rotate key secret? A new secret key will be generated for this API key and the old secret will stop working.')">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="rotate_key">
+                        <input type="hidden" name="key_id" value="<?= $k['id'] ?>">
+                        <button type="submit" class="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-extrabold text-amber-800 bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-all cursor-pointer">
+                            <i class="fa-solid fa-arrows-rotate mr-1 text-amber-600"></i>Rotate Key
+                        </button>
+                    </form>
                     <form method="post" onsubmit="return confirm('Revoke this API key? All applications using it will lose access immediately.')">
                         <?= csrf_field() ?>
                         <input type="hidden" name="action" value="revoke_key">
@@ -357,7 +410,6 @@ function copyNewKey() {
                         <button type="submit" class="inline-flex items-center px-3.5 py-2 rounded-xl text-xs font-extrabold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 transition-all">
                             <i class="fa-solid fa-ban mr-1.5"></i>Revoke
                         </button>
-                    </form>
                     <?php else: ?>
                     <form method="post" onsubmit="return confirm('Permanently delete this revoked key record?')">
                         <?= csrf_field() ?>
