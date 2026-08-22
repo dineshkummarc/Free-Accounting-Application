@@ -13,9 +13,11 @@ if (!has_role(['owner', 'admin'])) {
     redirect('index');
 }
 
-// Get active tenant direct MCP token for key reveal capability
-$mcpDirectToken = \Services\McpService::getOrCreateDirectToken($pdo, $tid);
-$mcpDirectHash  = hash('sha256', $mcpDirectToken);
+// Get active tenant direct MCP token from settings table
+$stMcp = $pdo->prepare("SELECT setting_value FROM settings WHERE tenant_id = ? AND setting_key = 'mcp_direct_token'");
+$stMcp->execute([$tid]);
+$mcpDirectToken = (string)$stMcp->fetchColumn();
+$mcpDirectHash  = !empty($mcpDirectToken) ? hash('sha256', $mcpDirectToken) : '';
 
 // ── Scope Definitions ──────────────────────────────────────────────
 $SCOPE_DEFS = [
