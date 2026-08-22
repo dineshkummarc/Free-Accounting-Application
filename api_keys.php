@@ -13,7 +13,15 @@ if (!has_role(['owner', 'admin'])) {
     redirect('index');
 }
 
-// Get active tenant direct MCP token from settings table
+// Auto-ensure schema columns exist on all database versions
+try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN created_by_user_id INT UNSIGNED NULL AFTER tenant_id"); } catch (\Throwable $e) {}
+try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN key_hash VARCHAR(64) NULL AFTER name"); } catch (\Throwable $e) {}
+try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN key_prefix VARCHAR(20) NULL AFTER key_hash"); } catch (\Throwable $e) {}
+try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN scopes TEXT NULL AFTER key_prefix"); } catch (\Throwable $e) {}
+try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN expires_at DATE NULL AFTER scopes"); } catch (\Throwable $e) {}
+try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN revoked_at DATETIME NULL AFTER is_active"); } catch (\Throwable $e) {}
+
+// Get active tenant direct MCP token for key reveal capability
 $stMcp = $pdo->prepare("SELECT setting_value FROM settings WHERE tenant_id = ? AND setting_key = 'mcp_direct_token'");
 $stMcp->execute([$tid]);
 $mcpDirectToken = (string)$stMcp->fetchColumn();
@@ -49,10 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             // Validate scopes & enforce creator role limits
             $validScopes = array_values(array_filter($scopesRaw, fn($s) => array_key_exists($s, $SCOPE_DEFS)));
-            
-            // Restrict tenants:write scope strictly to Master Super-Admins
-            $isMasterSuperAdmin = ($tid === 1 && has_role(['owner']));
-            if (!$isMasterSuperAdmin) {
+            if (!has_role(['owner'])) {
                 $validScopes = array_values(array_diff($validScopes, ['tenants:write']));
             }
 
@@ -60,41 +65,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flash_error = 'Select at least one valid permission scope.';
             } else {
                 // Generate key: os_live_ + 40 hex chars
-                $rawKey    = 'os_live_' . bin2hex(random_bytes(20));
-                $keyHash   = hash('sha256', $rawKey);
-                $keyPrefix = substr($rawKey, 0, 16) . '...';
-                $expiry    = (!empty($expiresAt)) ? $expiresAt : null;
+                $rawKey     = 'os_live_' . bin2hex(random_bytes(20));
+                $keyHash    = hash('sha256', $rawKey);
+                $keyPrefix  = substr($rawKey, 0, 16) . '...';
+                $expiry     = (!empty($expiresAt)) ? $expiresAt : null;
+                $jsonScopes = json_encode(array_values($validScopes));
 
                 try {
                     $st = $pdo->prepare("INSERT INTO api_keys
-                        (tenant_id, created_by_user_id, name, key_hash, key_prefix, scopes, expires_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    $st->execute([
-                        $tid, $uid, $name, $keyHash, $keyPrefix,
-                        json_encode(array_values($validScopes)),
-                        $expiry
-                    ]);
+                        (tenant_id, created_by_user_id, name, key_hash, key_prefix, scopes, expires_at, is_active)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 1)");
+                    $st->execute([$tid, $uid, $name, $keyHash, $keyPrefix, $jsonScopes, $expiry]);
                 } catch (\PDOException $e) {
-                    // Auto-upgrade schema if table lacks columns on live server
                     try {
-                        @$pdo->exec("ALTER TABLE api_keys ADD COLUMN created_by_user_id INT UNSIGNED NULL AFTER tenant_id");
-                        @$pdo->exec("ALTER TABLE api_keys ADD COLUMN key_hash VARCHAR(64) NULL AFTER name");
-                        @$pdo->exec("ALTER TABLE api_keys ADD COLUMN key_prefix VARCHAR(20) NULL AFTER key_hash");
-                        @$pdo->exec("ALTER TABLE api_keys ADD COLUMN scopes JSON NULL AFTER key_prefix");
-                        @$pdo->exec("ALTER TABLE api_keys ADD COLUMN expires_at DATE NULL AFTER scopes");
-                        @$pdo->exec("ALTER TABLE api_keys ADD COLUMN revoked_at DATETIME NULL AFTER is_active");
-
-                        $st = $pdo->prepare("INSERT INTO api_keys
-                            (tenant_id, created_by_user_id, name, key_hash, key_prefix, scopes, expires_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)");
-                        $st->execute([
-                            $tid, $uid, $name, $keyHash, $keyPrefix,
-                            json_encode(array_values($validScopes)),
-                            $expiry
-                        ]);
+                        $st = $pdo->prepare("INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix, scopes, is_active) VALUES (?, ?, ?, ?, ?, 1)");
+                        $st->execute([$tid, $name, $keyHash, $keyPrefix, $jsonScopes]);
                     } catch (\PDOException $e2) {
-                        $st = $pdo->prepare("INSERT INTO api_keys (tenant_id, name, api_key, is_active) VALUES (?, ?, ?, 1)");
-                        $st->execute([$tid, $name, $rawKey]);
+                        $st = $pdo->prepare("INSERT INTO api_keys (tenant_id, name, api_key, scopes, is_active) VALUES (?, ?, ?, ?, 1)");
+                        $st->execute([$tid, $name, $rawKey, $jsonScopes]);
                     }
                 }
 
