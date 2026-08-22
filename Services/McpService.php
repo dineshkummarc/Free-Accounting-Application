@@ -357,18 +357,20 @@ class McpService {
                 $status = $args['status'] ?? 'all';
                 $limit = min(50, max(1, (int)($args['limit'] ?? 10)));
                 
-                $sql = "SELECT i.id, i.invoice_number, i.status, i.total, i.due_date, i.created_at, c.name as client_name 
+                $sql = "SELECT i.id, i.invoice_number, i.status, i.currency, i.total, i.paid_amount, 
+                               COALESCE(i.valid_until, i.invoice_date) as due_date, i.invoice_date, i.created_at, 
+                               COALESCE(NULLIF(c.company_name, ''), c.contact_name) as client_name 
                         FROM invoices i 
                         LEFT JOIN clients c ON c.id = i.client_id AND c.tenant_id = i.tenant_id
                         WHERE i.tenant_id = ?";
                 $params = [$this->tenantId];
 
                 if ($status === 'unpaid') {
-                    $sql .= " AND i.status IN ('sent', 'viewed', 'overdue')";
+                    $sql .= " AND i.status IN ('sent', 'partially_paid', 'overdue')";
                 } elseif ($status === 'paid') {
                     $sql .= " AND i.status = 'paid'";
                 } elseif ($status === 'overdue') {
-                    $sql .= " AND (i.status = 'overdue' OR (i.status IN ('sent', 'viewed') AND i.due_date < CURDATE()))";
+                    $sql .= " AND (i.status = 'overdue' OR (i.status IN ('sent', 'partially_paid') AND i.valid_until IS NOT NULL AND i.valid_until < CURDATE()))";
                 } elseif ($status === 'draft') {
                     $sql .= " AND i.status = 'draft'";
                 }
@@ -385,10 +387,10 @@ class McpService {
                 $invNum = trim($args['invoice_number'] ?? '');
 
                 if ($invId > 0) {
-                    $st = $this->pdo->prepare("SELECT i.*, c.name as client_name, c.email as client_email FROM invoices i LEFT JOIN clients c ON c.id = i.client_id WHERE i.id = ? AND i.tenant_id = ?");
+                    $st = $this->pdo->prepare("SELECT i.*, COALESCE(i.valid_until, i.invoice_date) as due_date, COALESCE(NULLIF(c.company_name, ''), c.contact_name) as client_name, c.email as client_email FROM invoices i LEFT JOIN clients c ON c.id = i.client_id WHERE i.id = ? AND i.tenant_id = ?");
                     $st->execute([$invId, $this->tenantId]);
                 } else {
-                    $st = $this->pdo->prepare("SELECT i.*, c.name as client_name, c.email as client_email FROM invoices i LEFT JOIN clients c ON c.id = i.client_id WHERE i.invoice_number = ? AND i.tenant_id = ?");
+                    $st = $this->pdo->prepare("SELECT i.*, COALESCE(i.valid_until, i.invoice_date) as due_date, COALESCE(NULLIF(c.company_name, ''), c.contact_name) as client_name, c.email as client_email FROM invoices i LEFT JOIN clients c ON c.id = i.client_id WHERE i.invoice_number = ? AND i.tenant_id = ?");
                     $st->execute([$invNum, $this->tenantId]);
                 }
                 $invoice = $st->fetch(PDO::FETCH_ASSOC);
@@ -397,8 +399,8 @@ class McpService {
                 }
 
                 // Get items
-                $stItems = $this->pdo->prepare("SELECT * FROM invoice_items WHERE invoice_id = ? AND tenant_id = ?");
-                $stItems->execute([$invoice['id'], $this->tenantId]);
+                $stItems = $this->pdo->prepare("SELECT id, description, details, qty as quantity, unit_price, amount as total FROM invoice_items WHERE invoice_id = ?");
+                $stItems->execute([$invoice['id']]);
                 $invoice['items'] = $stItems->fetchAll(PDO::FETCH_ASSOC);
 
                 return $this->toolTextResult(json_encode($invoice, JSON_PRETTY_PRINT));
@@ -436,24 +438,23 @@ class McpService {
                 }
                 $total = $subtotal + $taxTotal;
 
-                $stIns = $this->pdo->prepare("INSERT INTO invoices (tenant_id, client_id, invoice_number, status, due_date, subtotal, tax_total, total, notes, created_at) VALUES (?, ?, ?, 'sent', ?, ?, ?, ?, ?, NOW())");
+                $stIns = $this->pdo->prepare("INSERT INTO invoices (tenant_id, client_id, invoice_number, status, invoice_date, valid_until, subtotal, tax_amount, total, notes, created_at) VALUES (?, ?, ?, 'sent', CURDATE(), ?, ?, ?, ?, ?, NOW())");
                 $stIns->execute([$this->tenantId, $clientId, $invNum, $dueDate, $subtotal, $taxTotal, $total, $notes]);
                 $newId = (int)$this->pdo->lastInsertId();
 
-                $stItemIns = $this->pdo->prepare("INSERT INTO invoice_items (tenant_id, invoice_id, description, quantity, unit_price, tax_rate, total) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stItemIns = $this->pdo->prepare("INSERT INTO invoice_items (invoice_id, description, qty, unit_price, amount) VALUES (?, ?, ?, ?, ?)");
                 foreach ($items as $item) {
                     $qty = (float)($item['quantity'] ?? 1);
                     $price = (float)($item['unit_price'] ?? 0);
-                    $taxRate = (float)($item['tax_rate'] ?? 0);
-                    $lineTotal = ($qty * $price) * (1 + ($taxRate / 100));
-                    $stItemIns->execute([$this->tenantId, $newId, $item['description'], $qty, $price, $taxRate, $lineTotal]);
+                    $lineTotal = $qty * $price;
+                    $stItemIns->execute([$newId, $item['description'], $qty, $price, $lineTotal]);
                 }
 
                 return $this->toolTextResult("Successfully created Invoice #{$invNum} (ID: {$newId}) for Total: {$total}.");
 
             case 'send_invoice_email':
                 $invId = (int)($args['invoice_id'] ?? 0);
-                $st = $this->pdo->prepare("SELECT i.*, c.name, c.email FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ? AND i.tenant_id = ?");
+                $st = $this->pdo->prepare("SELECT i.*, COALESCE(NULLIF(c.company_name, ''), c.contact_name) as client_name, c.email FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ? AND i.tenant_id = ?");
                 $st->execute([$invId, $this->tenantId]);
                 $inv = $st->fetch(PDO::FETCH_ASSOC);
 
@@ -464,7 +465,6 @@ class McpService {
                     return $this->toolTextResult("Client has no registered email address.", true);
                 }
 
-                // Call Mailer service if available
                 if (class_exists('\\Services\\Mailer')) {
                     \Services\Mailer::sendInvoiceEmail($this->pdo, $this->tenantId, $invId);
                     return $this->toolTextResult("Invoice #{$inv['invoice_number']} emailed successfully to {$inv['email']}.");
@@ -475,73 +475,84 @@ class McpService {
                 $invId = (int)($args['invoice_id'] ?? 0);
                 $amount = (float)($args['amount'] ?? 0);
                 $method = trim($args['method'] ?? 'Bank Transfer');
-                $notes = trim($args['notes'] ?? 'Paid via MCP Tool');
+                $notes = trim($args['notes'] ?? 'Recorded via AI MCP');
 
-                $st = $this->pdo->prepare("SELECT * FROM invoices WHERE id = ? AND tenant_id = ?");
-                $st->execute([$invId, $this->tenantId]);
-                $inv = $st->fetch(PDO::FETCH_ASSOC);
-                if (!$inv) {
-                    return $this->toolTextResult("Invoice ID {$invId} not found.", true);
+                if ($invId <= 0 || $amount <= 0) {
+                    return $this->toolTextResult("Valid invoice_id and positive amount are required.", true);
                 }
 
-                $stPay = $this->pdo->prepare("INSERT INTO payments (tenant_id, invoice_id, amount, payment_method, notes, created_at) VALUES (?, ?, ?, ?, ?, NOW())");
-                $stPay->execute([$this->tenantId, $invId, $amount, $method, $notes]);
+                $stInv = $this->pdo->prepare("SELECT * FROM invoices WHERE id = ? AND tenant_id = ?");
+                $stInv->execute([$invId, $this->tenantId]);
+                $inv = $stInv->fetch(PDO::FETCH_ASSOC);
+                if (!$inv) {
+                    return $this->toolTextResult("Invoice ID {$invId} not found in this workspace.", true);
+                }
 
-                // Update invoice status if fully paid
-                $stSum = $this->pdo->prepare("SELECT SUM(amount) FROM payments WHERE invoice_id = ? AND tenant_id = ?");
-                $stSum->execute([$invId, $this->tenantId]);
+                $stPay = $this->pdo->prepare("INSERT INTO payments (tenant_id, invoice_id, amount, currency, payment_date, payment_method, gateway, notes) VALUES (?, ?, ?, ?, NOW(), ?, 'manual', ?)");
+                $stPay->execute([$this->tenantId, $invId, $amount, $inv['currency'] ?? 'AED', $method, $notes]);
+
+                $stSum = $this->pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE invoice_id = ?");
+                $stSum->execute([$invId]);
                 $totalPaid = (float)$stSum->fetchColumn();
 
-                if ($totalPaid >= (float)$inv['total']) {
-                    $this->pdo->prepare("UPDATE invoices SET status = 'paid', paid_at = NOW() WHERE id = ? AND tenant_id = ?")->execute([$invId, $this->tenantId]);
-                    return $this->toolTextResult("Payment of {$amount} recorded. Invoice #{$inv['invoice_number']} is now FULLY PAID.");
-                }
-                return $this->toolTextResult("Payment of {$amount} recorded. Total paid so far: {$totalPaid} / {$inv['total']}.");
+                $newStatus = ($totalPaid >= (float)$inv['total'] - 0.01) ? 'paid' : 'partially_paid';
+                $stUpd = $this->pdo->prepare("UPDATE invoices SET status = ?, paid_amount = ? WHERE id = ? AND tenant_id = ?");
+                $stUpd->execute([$newStatus, $totalPaid, $invId, $this->tenantId]);
+
+                return $this->toolTextResult("Payment of {$amount} recorded for Invoice #{$inv['invoice_number']}. New status: {$newStatus}.");
 
             case 'list_clients':
                 $search = trim($args['search'] ?? '');
                 $limit = min(50, max(1, (int)($args['limit'] ?? 20)));
 
-                $sql = "SELECT id, name, email, phone, company, created_at FROM clients WHERE tenant_id = ?";
+                $sql = "SELECT id, company_name, contact_name, email, phone, country, currency, created_at FROM clients WHERE tenant_id = ?";
                 $params = [$this->tenantId];
                 if ($search !== '') {
-                    $sql .= " AND (name LIKE ? OR email LIKE ? OR company LIKE ?)";
-                    $params[] = "%{$search}%";
-                    $params[] = "%{$search}%";
-                    $params[] = "%{$search}%";
+                    $sql .= " AND (company_name LIKE ? OR contact_name LIKE ? OR email LIKE ?)";
+                    $term = "%{$search}%";
+                    $params[] = $term;
+                    $params[] = $term;
+                    $params[] = $term;
                 }
-                $sql .= " ORDER BY name ASC LIMIT {$limit}";
+                $sql .= " ORDER BY company_name ASC LIMIT {$limit}";
                 $st = $this->pdo->prepare($sql);
                 $st->execute($params);
                 return $this->toolTextResult(json_encode($st->fetchAll(PDO::FETCH_ASSOC), JSON_PRETTY_PRINT));
 
             case 'create_client':
                 $name = trim($args['name'] ?? '');
-                if ($name === '') {
-                    return $this->toolTextResult("Client name is required.", true);
-                }
                 $email = trim($args['email'] ?? '');
                 $phone = trim($args['phone'] ?? '');
                 $company = trim($args['company'] ?? '');
                 $address = trim($args['address'] ?? '');
 
-                $st = $this->pdo->prepare("INSERT INTO clients (tenant_id, name, email, phone, company, address, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-                $st->execute([$this->tenantId, $name, $email, $phone, $company, $address]);
+                if ($name === '' && $company === '') {
+                    return $this->toolTextResult("Client name or company is required.", true);
+                }
+
+                $companyName = $company ?: $name;
+                $contactName = $company ? $name : '';
+
+                $st = $this->pdo->prepare("INSERT INTO clients (tenant_id, company_name, contact_name, email, phone, address, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
+                $st->execute([$this->tenantId, $companyName, $contactName, $email, $phone, $address]);
                 $newId = (int)$this->pdo->lastInsertId();
 
-                return $this->toolTextResult("Created client '{$name}' with ID: {$newId}.");
+                return $this->toolTextResult("Created client '{$companyName}' with ID: {$newId}.");
 
             case 'list_expenses':
                 $cat = trim($args['category'] ?? '');
                 $limit = min(50, max(1, (int)($args['limit'] ?? 15)));
 
-                $sql = "SELECT id, amount, category, vendor, expense_date, notes FROM expenses WHERE tenant_id = ?";
+                $sql = "SELECT e.id, e.vendor_name, e.expense_date, e.total, e.currency, e.payment_method, e.notes, ec.name as category_name 
+                        FROM expenses e 
+                        LEFT JOIN expense_categories ec ON ec.id = e.category_id 
+                        WHERE e.tenant_id = ?";
                 $params = [$this->tenantId];
                 if ($cat !== '') {
-                    $sql .= " AND category = ?";
+                    $sql .= " AND ec.name = ?";
                     $params[] = $cat;
                 }
-                $sql .= " ORDER BY expense_date DESC, id DESC LIMIT {$limit}";
+                $sql .= " ORDER BY e.expense_date DESC, e.id DESC LIMIT {$limit}";
                 $st = $this->pdo->prepare($sql);
                 $st->execute($params);
                 return $this->toolTextResult(json_encode($st->fetchAll(PDO::FETCH_ASSOC), JSON_PRETTY_PRINT));
@@ -551,16 +562,28 @@ class McpService {
                 if ($amount <= 0) {
                     return $this->toolTextResult("Amount must be greater than 0.", true);
                 }
-                $category = trim($args['category'] ?? 'General');
+                $categoryName = trim($args['category'] ?? 'General');
                 $vendor = trim($args['vendor'] ?? 'N/A');
                 $date = $args['date'] ?? date('Y-m-d');
                 $notes = trim($args['notes'] ?? '');
 
-                $st = $this->pdo->prepare("INSERT INTO expenses (tenant_id, amount, category, vendor, expense_date, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-                $st->execute([$this->tenantId, $amount, $category, $vendor, $date, $notes]);
+                $catId = null;
+                if ($categoryName) {
+                    $stCat = $this->pdo->prepare("SELECT id FROM expense_categories WHERE tenant_id = ? AND name = ?");
+                    $stCat->execute([$this->tenantId, $categoryName]);
+                    $catId = $stCat->fetchColumn() ?: null;
+                    if (!$catId) {
+                        $stCatIns = $this->pdo->prepare("INSERT INTO expense_categories (tenant_id, name) VALUES (?, ?)");
+                        $stCatIns->execute([$this->tenantId, $categoryName]);
+                        $catId = (int)$this->pdo->lastInsertId();
+                    }
+                }
+
+                $st = $this->pdo->prepare("INSERT INTO expenses (tenant_id, category_id, vendor_name, expense_date, total, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
+                $st->execute([$this->tenantId, $catId, $vendor, $date, $amount, $notes]);
                 $newId = (int)$this->pdo->lastInsertId();
 
-                return $this->toolTextResult("Expense of {$amount} under '{$category}' recorded with ID: {$newId}.");
+                return $this->toolTextResult("Expense of {$amount} under '{$categoryName}' recorded with ID: {$newId}.");
 
             case 'get_financial_summary':
                 $period = $args['period'] ?? 'month';
@@ -574,23 +597,19 @@ class McpService {
                     $dateFilter = "created_at >= DATE_SUB(NOW(), INTERVAL 365 DAY)";
                 }
 
-                // Invoiced total
-                $stRev = $this->pdo->prepare("SELECT SUM(total) FROM invoices WHERE tenant_id = ? AND status != 'draft' AND {$dateFilter}");
+                $stRev = $this->pdo->prepare("SELECT COALESCE(SUM(paid_amount), 0) FROM invoices WHERE tenant_id = ? AND {$dateFilter}");
                 $stRev->execute([$this->tenantId]);
-                $totalInvoiced = (float)$stRev->fetchColumn();
+                $totalCollected = (float)$stRev->fetchColumn();
 
-                // Paid total
-                $stPaid = $this->pdo->prepare("SELECT SUM(amount) FROM payments WHERE tenant_id = ? AND {$dateFilter}");
-                $stPaid->execute([$this->tenantId]);
-                $totalCollected = (float)$stPaid->fetchColumn();
+                $stInvoiced = $this->pdo->prepare("SELECT COALESCE(SUM(total), 0) FROM invoices WHERE tenant_id = ? AND status != 'draft' AND {$dateFilter}");
+                $stInvoiced->execute([$this->tenantId]);
+                $totalInvoiced = (float)$stInvoiced->fetchColumn();
 
-                // Overdue total
-                $stOverdue = $this->pdo->prepare("SELECT SUM(total) FROM invoices WHERE tenant_id = ? AND status IN ('sent','viewed','overdue') AND due_date < CURDATE()");
-                $stOverdue->execute([$this->tenantId]);
-                $totalOverdue = (float)$stOverdue->fetchColumn();
+                $stAr = $this->pdo->prepare("SELECT COALESCE(SUM(total - paid_amount), 0) FROM invoices WHERE tenant_id = ? AND status IN ('sent','partially_paid','overdue')");
+                $stAr->execute([$this->tenantId]);
+                $totalOverdue = (float)$stAr->fetchColumn();
 
-                // Expense total
-                $stExp = $this->pdo->prepare("SELECT SUM(amount) FROM expenses WHERE tenant_id = ? AND expense_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+                $stExp = $this->pdo->prepare("SELECT COALESCE(SUM(total), 0) FROM expenses WHERE tenant_id = ? AND {$dateFilter}");
                 $stExp->execute([$this->tenantId]);
                 $totalExpenses = (float)$stExp->fetchColumn();
 
@@ -599,12 +618,12 @@ class McpService {
                 $summary = [
                     'period' => $period,
                     'tenant_name' => $this->tenant['name'] ?? 'Workspace',
-                    'currency' => $this->tenant['currency'] ?? 'USD',
+                    'currency' => $this->tenant['currency'] ?? 'AED',
                     'total_invoiced' => $totalInvoiced,
                     'total_collected' => $totalCollected,
-                    'total_overdue_ar' => $totalOverdue,
+                    'outstanding_ar' => $totalOverdue,
                     'total_expenses' => $totalExpenses,
-                    'net_cash_profit' => $netProfit
+                    'net_profit' => $netProfit
                 ];
                 return $this->toolTextResult(json_encode($summary, JSON_PRETTY_PRINT));
 
@@ -612,7 +631,7 @@ class McpService {
                 $status = $args['status'] ?? 'all';
                 $limit = min(50, max(1, (int)($args['limit'] ?? 10)));
                 
-                $sql = "SELECT q.*, c.name as client_name FROM quotes q LEFT JOIN clients c ON c.id = q.client_id WHERE q.tenant_id = ?";
+                $sql = "SELECT q.*, COALESCE(NULLIF(c.company_name, ''), c.contact_name) as client_name FROM quotes q LEFT JOIN clients c ON c.id = q.client_id WHERE q.tenant_id = ?";
                 $params = [$this->tenantId];
                 if ($status !== 'all') {
                     $sql .= " AND q.status = ?";
@@ -625,7 +644,7 @@ class McpService {
 
             case 'create_quote':
                 $clientId = (int)($args['client_id'] ?? 0);
-                $dueDate = $args['due_date'] ?? date('Y-m-d', strtotime('+30 days'));
+                $validUntil = $args['due_date'] ?? date('Y-m-d', strtotime('+30 days'));
                 $notes = trim($args['notes'] ?? '');
                 $items = $args['items'] ?? [];
 
@@ -639,9 +658,16 @@ class McpService {
                     $total += ((float)$it['quantity'] * (float)$it['unit_price']);
                 }
 
-                $stIns = $this->pdo->prepare("INSERT INTO quotes (tenant_id, client_id, quote_number, status, due_date, total, notes, created_at) VALUES (?, ?, ?, 'sent', ?, ?, ?, NOW())");
-                $stIns->execute([$this->tenantId, $clientId, $quoteNum, $dueDate, $total, $notes]);
+                $stIns = $this->pdo->prepare("INSERT INTO quotes (tenant_id, client_id, quote_number, status, quote_date, valid_until, subtotal, total, notes, created_at) VALUES (?, ?, ?, 'sent', CURDATE(), ?, ?, ?, ?, NOW())");
+                $stIns->execute([$this->tenantId, $clientId, $quoteNum, $validUntil, $total, $total, $notes]);
                 $newId = (int)$this->pdo->lastInsertId();
+
+                $stItemIns = $this->pdo->prepare("INSERT INTO quote_items (quote_id, description, qty, unit_price, amount) VALUES (?, ?, ?, ?, ?)");
+                foreach ($items as $it) {
+                    $q = (float)($it['quantity'] ?? 1);
+                    $p = (float)($it['unit_price'] ?? 0);
+                    $stItemIns->execute([$newId, $it['description'], $q, $p, $q * $p]);
+                }
 
                 return $this->toolTextResult("Created Quote #{$quoteNum} (ID: {$newId}) for Total: {$total}.");
 
