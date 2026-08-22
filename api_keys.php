@@ -17,7 +17,8 @@ if (!has_role(['owner', 'admin'])) {
 try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN created_by_user_id INT UNSIGNED NULL AFTER tenant_id"); } catch (\Throwable $e) {}
 try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN key_hash VARCHAR(64) NULL AFTER name"); } catch (\Throwable $e) {}
 try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN key_prefix VARCHAR(20) NULL AFTER key_hash"); } catch (\Throwable $e) {}
-try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN scopes TEXT NULL AFTER key_prefix"); } catch (\Throwable $e) {}
+try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN api_key VARCHAR(255) NULL AFTER key_prefix"); } catch (\Throwable $e) {}
+try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN scopes TEXT NULL AFTER api_key"); } catch (\Throwable $e) {}
 try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN expires_at DATE NULL AFTER scopes"); } catch (\Throwable $e) {}
 try { @$pdo->exec("ALTER TABLE api_keys ADD COLUMN revoked_at DATETIME NULL AFTER is_active"); } catch (\Throwable $e) {}
 
@@ -73,13 +74,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 try {
                     $st = $pdo->prepare("INSERT INTO api_keys
-                        (tenant_id, created_by_user_id, name, key_hash, key_prefix, scopes, expires_at, is_active)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, 1)");
-                    $st->execute([$tid, $uid, $name, $keyHash, $keyPrefix, $jsonScopes, $expiry]);
+                        (tenant_id, created_by_user_id, name, key_hash, key_prefix, api_key, scopes, expires_at, is_active)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)");
+                    $st->execute([$tid, $uid, $name, $keyHash, $keyPrefix, $rawKey, $jsonScopes, $expiry]);
                 } catch (\PDOException $e) {
                     try {
-                        $st = $pdo->prepare("INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix, scopes, is_active) VALUES (?, ?, ?, ?, ?, 1)");
-                        $st->execute([$tid, $name, $keyHash, $keyPrefix, $jsonScopes]);
+                        $st = $pdo->prepare("INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix, api_key, scopes, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)");
+                        $st->execute([$tid, $name, $keyHash, $keyPrefix, $rawKey, $jsonScopes]);
                     } catch (\PDOException $e2) {
                         $st = $pdo->prepare("INSERT INTO api_keys (tenant_id, name, api_key, scopes, is_active) VALUES (?, ?, ?, ?, 1)");
                         $st->execute([$tid, $name, $rawKey, $jsonScopes]);
@@ -87,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $newKeyPlain = $rawKey;
-                flash('success', "API key '<strong>" . htmlspecialchars($name) . "</strong>' created. Copy it now — it won't be shown again.");
+                flash('success', "API key '<strong>" . htmlspecialchars($name) . "</strong>' created.");
             }
         }
     }
@@ -289,7 +290,7 @@ function copyNewKey() {
 
                     <?php 
                         $isMcpKey = (!empty($k['key_hash']) && $k['key_hash'] === $mcpDirectHash) || ($k['name'] === 'One-Click AI Connection Key');
-                        $fullTokenSecret = $isMcpKey ? $mcpDirectToken : null;
+                        $fullTokenSecret = !empty($k['api_key']) ? $k['api_key'] : ($isMcpKey ? $mcpDirectToken : null);
                     ?>
                     <!-- Key Prefix / Token Display with Reveal Option -->
                     <div class="flex items-center space-x-2 mb-3 flex-wrap gap-y-1">
