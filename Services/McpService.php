@@ -17,6 +17,38 @@ class McpService {
         $this->keyScopes = $tenant['_api_key_scopes'] ?? ['invoices:read', 'invoices:write', 'clients:read', 'clients:write', 'payments:write', 'reports:read', 'admin'];
     }
 
+    public static function getOrCreateDirectToken(PDO $pdo, int $tenantId): string {
+        $st = $pdo->prepare("SELECT setting_value FROM settings WHERE tenant_id = ? AND setting_key = 'mcp_direct_token'");
+        $st->execute([$tenantId]);
+        $token = (string)$st->fetchColumn();
+        if (!empty($token)) {
+            return $token;
+        }
+
+        $token = 'os_mcp_' . bin2hex(random_bytes(18));
+        $keyHash = hash('sha256', $token);
+        $keyPrefix = substr($token, 0, 16) . '...';
+        $name = 'One-Click AI Connection Key';
+        $scopes = json_encode(['invoices:read', 'invoices:write', 'clients:read', 'clients:write', 'payments:write', 'reports:read']);
+
+        try {
+            $stSet = $pdo->prepare("INSERT INTO settings (tenant_id, setting_key, setting_value) VALUES (?, 'mcp_direct_token', ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+            $stSet->execute([$tenantId, $token]);
+        } catch (Throwable $e) {}
+
+        try {
+            $stIns = $pdo->prepare("INSERT INTO api_keys (tenant_id, created_by_user_id, name, key_hash, key_prefix, scopes, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)");
+            $stIns->execute([$tenantId, $_SESSION['user_id'] ?? 1, $name, $keyHash, $keyPrefix, $scopes]);
+        } catch (Throwable $e) {
+            try {
+                $stIns = $pdo->prepare("INSERT INTO api_keys (tenant_id, name, key_hash, key_prefix, scopes, is_active) VALUES (?, ?, ?, ?, ?, 1)");
+                $stIns->execute([$tenantId, $name, $keyHash, $keyPrefix, $scopes]);
+            } catch (Throwable $e2) {}
+        }
+
+        return $token;
+    }
+
     private function hasScope(string $requiredScope): bool {
         if (in_array('admin', $this->keyScopes, true)) return true;
         return in_array($requiredScope, $this->keyScopes, true);
