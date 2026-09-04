@@ -177,6 +177,13 @@ function run_migrations(PDO $pdo): string {
     ensure_column($pdo, 'payments', 'created_by', "INT UNSIGNED NULL AFTER notes");
     ensure_column($pdo, 'payments', 'created_at', "TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER created_by");
 
+    // Expense Enhancements — Client linkage & Invoice linkage
+    ensure_column($pdo, 'expenses', 'client_id', "INT UNSIGNED NULL AFTER category_id");
+    ensure_column($pdo, 'expenses', 'invoice_id', "INT UNSIGNED NULL AFTER client_id");
+
+    // Invoice Enhancements — Sales Agent / Salesperson
+    ensure_column($pdo, 'invoices', 'agent_id', "INT UNSIGNED NULL AFTER client_id");
+
     $output[] = "Database schema updated successfully with Scoped API Keys, Recurring Invoices & Webhook Events tables.";
 
     return implode("<br>", $output);

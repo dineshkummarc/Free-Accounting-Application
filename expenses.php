@@ -31,9 +31,10 @@ $totalExpRecords = (int)$stCountExp->fetchColumn();
 $totalExpPages = max(1, (int)ceil($totalExpRecords / $expPerPage));
 
 $st = $pdo->prepare("
-    SELECT e.*, ec.name category_name 
+    SELECT e.*, ec.name category_name, c.company_name client_name, c.id client_real_id
     FROM expenses e 
-    LEFT JOIN expense_categories ec ON ec.id = e.category_id 
+    LEFT JOIN expense_categories ec ON ec.id = e.category_id
+    LEFT JOIN clients c ON c.id = e.client_id AND c.tenant_id = e.tenant_id
     $expWhere 
     ORDER BY e.expense_date DESC, e.id DESC 
     LIMIT $expPerPage OFFSET $expOffset
@@ -94,6 +95,7 @@ page_start('Expense Management');
                 <tr class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-400 uppercase tracking-wider">
                     <th class="px-6 py-3.5">Expense Date</th>
                     <th class="px-6 py-3.5">Vendor / Supplier</th>
+                    <th class="px-6 py-3.5">Client Account</th>
                     <th class="px-6 py-3.5">Category</th>
                     <th class="px-6 py-3.5">Payment Method</th>
                     <th class="px-6 py-3.5 text-right">Subtotal</th>
@@ -115,6 +117,15 @@ page_start('Expense Management');
                     <tr class="hover:bg-slate-50/80 transition-all">
                         <td class="px-6 py-4 text-xs font-semibold text-slate-500"><?=e(date('d M Y', strtotime($ex['expense_date'])))?></td>
                         <td class="px-6 py-4 font-bold text-slate-900"><?=e($ex['vendor_name'])?></td>
+                        <td class="px-6 py-4">
+                            <?php if ($ex['client_real_id'] ?? null): ?>
+                                <a href="client_statement?client_id=<?=$ex['client_real_id']?>" class="text-xs font-bold text-amber-600 hover:text-amber-700 hover:underline flex items-center gap-1">
+                                    <i class="fa-solid fa-building text-2xs"></i><?=e($ex['client_name'])?>
+                                </a>
+                            <?php else: ?>
+                                <span class="text-xs text-slate-400">—</span>
+                            <?php endif; ?>
+                        </td>
                         <td class="px-6 py-4">
                             <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700"><?=e($ex['category_name'] ?: 'General')?></span>
                         </td>

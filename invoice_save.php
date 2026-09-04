@@ -17,6 +17,7 @@ $status = in_array($_POST['status'] ?? '', ['draft', 'sent', 'paid', 'overdue', 
 $currency = $_POST['currency'] ?? 'AED';
 $taxRateId = (int)($_POST['tax_rate_id'] ?? 0);
 $templateId = $_POST['template_id'] ?? 'modern_minimal';
+$agentId = (int)($_POST['agent_id'] ?? 0) ?: null;
 
 $desc = $_POST['description'] ?? [];
 $details = $_POST['details'] ?? [];
@@ -77,15 +78,15 @@ try {
             throw new RuntimeException('Invoice not found in your workspace.');
         }
 
-        $st = $pdo->prepare('UPDATE invoices SET invoice_number=?, client_id=?, invoice_date=?, valid_until=?, status=?, currency=?, subtotal=?, discount_type=?, discount_value=?, discount_amount=?, tax_rate_id=?, tax_amount=?, total=?, notes=?, template_id=? WHERE id=? AND tenant_id=?');
-        $st->execute([$number, $client, $date, $valid, $status, $currency, $subtotal, $type, $dv, $da, $taxRateId ?: null, $taxAmount, $total, $notes, $templateId, $id, $tid]);
+        $st = $pdo->prepare('UPDATE invoices SET invoice_number=?, client_id=?, agent_id=?, invoice_date=?, valid_until=?, status=?, currency=?, subtotal=?, discount_type=?, discount_value=?, discount_amount=?, tax_rate_id=?, tax_amount=?, total=?, notes=?, template_id=? WHERE id=? AND tenant_id=?');
+        $st->execute([$number, $client, $agentId, $date, $valid, $status, $currency, $subtotal, $type, $dv, $da, $taxRateId ?: null, $taxAmount, $total, $notes, $templateId, $id, $tid]);
 
         // Delete line items using tenant-bound JOIN
         $stDelItems = $pdo->prepare('DELETE ii FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id WHERE ii.invoice_id = ? AND i.tenant_id = ?');
         $stDelItems->execute([$id, $tid]);
     } else {
-        $st = $pdo->prepare('INSERT INTO invoices (tenant_id, invoice_number, client_id, invoice_date, valid_until, status, currency, subtotal, discount_type, discount_value, discount_amount, tax_rate_id, tax_amount, total, notes, template_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        $st->execute([$tid, $number, $client, $date, $valid, $status, $currency, $subtotal, $type, $dv, $da, $taxRateId ?: null, $taxAmount, $total, $notes, $templateId]);
+        $st = $pdo->prepare('INSERT INTO invoices (tenant_id, invoice_number, client_id, agent_id, invoice_date, valid_until, status, currency, subtotal, discount_type, discount_value, discount_amount, tax_rate_id, tax_amount, total, notes, template_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $st->execute([$tid, $number, $client, $agentId, $date, $valid, $status, $currency, $subtotal, $type, $dv, $da, $taxRateId ?: null, $taxAmount, $total, $notes, $templateId]);
         $id = (int)$pdo->lastInsertId();
     }
 

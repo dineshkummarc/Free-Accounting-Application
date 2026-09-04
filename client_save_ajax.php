@@ -19,9 +19,11 @@ try {
     verify_csrf();
 } catch (\Throwable $e) {
     http_response_code(419);
-    echo json_encode(['success' => false, 'message' => 'Invalid or expired CSRF token.']);
+    echo json_encode(['success' => false, 'message' => 'Invalid or expired CSRF token. Please refresh the page.']);
     exit;
 }
+// Capture the new (rotated) CSRF token so the JS can refresh the parent page's form fields
+$newCsrfToken = csrf_token();
 
 $pdo = $GLOBALS['pdo'];
 $tid = tenant_id();
@@ -52,7 +54,8 @@ try {
     echo json_encode([
         'success' => true,
         'message' => "Client '$companyName' created successfully.",
-        'client' => [
+        'csrf'    => $newCsrfToken,
+        'client'  => [
             'id'           => $newId,
             'company_name' => $companyName,
             'contact_name' => $contactName,

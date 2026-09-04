@@ -12,16 +12,26 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-verify_csrf();
-
 $pdo = $GLOBALS['pdo'];
 $tid = tenant_id();
 
 $rawInput = json_decode(file_get_contents('php://input'), true);
 $name = trim($rawInput['name'] ?? $_POST['name'] ?? '');
 
+// CSRF verification — token may come from JSON body (AJAX) or standard POST field (form submit)
+// JS sends JSON body so we must read the token from the decoded payload, not $_POST
+$submittedToken = $rawInput['csrf'] ?? $_POST['csrf'] ?? '';
+if (!$submittedToken || !hash_equals($_SESSION['csrf'] ?? '', $submittedToken)) {
+    http_response_code(419);
+    echo json_encode(['success' => false, 'error' => 'Invalid CSRF token. Please refresh the page.']);
+    exit;
+}
+// Rotate the token after successful validation (matches bootstrap verify_csrf() behaviour)
+$_SESSION['csrf'] = bin2hex(random_bytes(24));
+$newCsrfToken = $_SESSION['csrf'];
+
 if (empty($name)) {
-    echo json_encode(['success' => false, 'error' => 'Category name cannot be empty.']);
+    echo json_encode(['success' => false, 'error' => 'Category name cannot be empty.', 'csrf' => $newCsrfToken]);
     exit;
 }
 
@@ -31,7 +41,7 @@ $stChk->execute([$tid, $name]);
 $existing = $stChk->fetch();
 
 if ($existing) {
-    echo json_encode(['success' => true, 'id' => (int)$existing['id'], 'name' => $existing['name'], 'exists' => true]);
+    echo json_encode(['success' => true, 'id' => (int)$existing['id'], 'name' => $existing['name'], 'exists' => true, 'csrf' => $newCsrfToken]);
     exit;
 }
 
@@ -46,5 +56,6 @@ echo json_encode([
     'success' => true,
     'id' => $newId,
     'name' => $name,
-    'exists' => false
+    'exists' => false,
+    'csrf' => $newCsrfToken
 ]);

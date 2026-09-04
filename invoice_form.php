@@ -45,6 +45,11 @@ foreach ($clients as $c) {
 
 $nextInvNo = $invoice ? $invoice['invoice_number'] : invoice_number($pdo);
 
+// Fetch tenant users for Agent / Salesperson dropdown
+$stAgents = $pdo->prepare("SELECT u.id, u.name, ut.role FROM users u JOIN user_tenants ut ON ut.user_id = u.id WHERE ut.tenant_id = ? AND ut.role IN ('owner','admin','sales','accountant') ORDER BY u.name ASC");
+$stAgents->execute([$tid]);
+$agents = $stAgents->fetchAll();
+
 page_start($invoice ? 'Edit Tax Invoice' : 'Create Tax Invoice');
 ?>
 
@@ -138,6 +143,18 @@ page_start($invoice ? 'Edit Tax Invoice' : 'Create Tax Invoice');
                 <select name="template_id" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
                     <?php foreach ($availableTpls as $tKey => $tLabel): ?>
                         <option value="<?=$tKey?>" <?=$currentTpl === $tKey ? 'selected' : ''?>><?=e($tLabel)?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Sales Agent / Account Manager</label>
+                <select name="agent_id" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
+                    <option value="">-- No Agent Assigned --</option>
+                    <?php foreach ($agents as $ag): ?>
+                        <option value="<?=$ag['id']?>" <?=($invoice && ($invoice['agent_id'] ?? null) == $ag['id']) ? 'selected' : ''?>>
+                            <?=e($ag['name'])?>
+                        </option>
                     <?php endforeach; ?>
                 </select>
             </div>

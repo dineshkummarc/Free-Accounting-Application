@@ -82,6 +82,18 @@ if ($clientId > 0) {
         $stPay->execute([$tid, $clientId, $startDate, $endDate]);
         $payments = $stPay->fetchAll();
 
+        // Fetch expenses linked to this client
+        $stExp = $pdo->prepare('
+            SELECT e.id, e.expense_date, e.vendor_name, e.subtotal, e.tax_amount, e.total, e.currency, e.notes, ec.name category_name
+            FROM expenses e
+            LEFT JOIN expense_categories ec ON ec.id = e.category_id
+            WHERE e.tenant_id = ? AND e.client_id = ? AND e.expense_date BETWEEN ? AND ?
+            ORDER BY e.expense_date ASC
+        ');
+        $stExp->execute([$tid, $clientId, $startDate, $endDate]);
+        $clientExpenses = $stExp->fetchAll();
+        $totalExpenses = array_sum(array_column($clientExpenses, 'total'));
+
         // Merge and sort transactions by date
         $statementRows = array_merge($invoices, $payments);
         usort($statementRows, fn($a, $b) => strcmp($a['trans_date'], $b['trans_date']));
@@ -286,6 +298,57 @@ if (!$isClientPortal) {
                 </tfoot>
             </table>
         </div>
+
+        <?php if (!empty($clientExpenses)): ?>
+        <!-- Linked Expenses Section -->
+        <div class="border-t border-slate-100 pt-6">
+            <h3 class="text-sm font-extrabold text-slate-900 flex items-center mb-4">
+                <i class="fa-solid fa-receipt text-rose-500 mr-2"></i>
+                Linked Expenses for this Client
+                <span class="ml-2 px-2.5 py-0.5 bg-rose-50 text-rose-700 text-2xs font-bold rounded-full border border-rose-200"><?=count($clientExpenses)?> records</span>
+            </h3>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-rose-50/60 border-y border-rose-100 text-2xs font-extrabold text-slate-500 uppercase tracking-wider">
+                            <th class="px-4 py-2.5">Date</th>
+                            <th class="px-4 py-2.5">Vendor / Supplier</th>
+                            <th class="px-4 py-2.5">Category</th>
+                            <th class="px-4 py-2.5 text-right">Subtotal</th>
+                            <th class="px-4 py-2.5 text-right">Tax</th>
+                            <th class="px-4 py-2.5 text-right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-xs">
+                        <?php foreach ($clientExpenses as $ex): ?>
+                            <tr class="hover:bg-rose-50/30">
+                                <td class="px-4 py-2.5 font-semibold text-slate-600"><?=date('d M Y', strtotime($ex['expense_date']))?></td>
+                                <td class="px-4 py-2.5 font-bold text-slate-900">
+                                    <?=e($ex['vendor_name'])?>
+                                    <?php if ($ex['notes']): ?>
+                                        <span class="block text-2xs text-slate-400 font-normal mt-0.5"><?=e($ex['notes'])?></span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-4 py-2.5">
+                                    <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold text-3xs"><?=e($ex['category_name'] ?: 'General')?></span>
+                                </td>
+                                <td class="px-4 py-2.5 text-right font-mono text-slate-700"><?=money((float)$ex['subtotal'], $ex['currency'])?></td>
+                                <td class="px-4 py-2.5 text-right font-mono text-slate-500"><?=money((float)$ex['tax_amount'], $ex['currency'])?></td>
+                                <td class="px-4 py-2.5 text-right font-mono font-bold text-rose-600"><?=money((float)$ex['total'], $ex['currency'])?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                    <tfoot>
+                        <tr class="bg-rose-50 border-t border-rose-200 text-xs font-bold">
+                            <td colspan="5" class="px-4 py-3 text-slate-600 uppercase tracking-wider">Total Expenses (Cost of Service)</td>
+                            <td class="px-4 py-3 text-right font-mono font-black text-rose-600"><?=money($totalExpenses, $client['currency'])?></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        <?php endif; ?>
+
     </div>
 <?php endif; ?>
 

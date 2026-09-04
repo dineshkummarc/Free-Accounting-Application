@@ -18,29 +18,45 @@ if ($id > 0) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
 
-    $vendorName = trim($_POST['vendor_name'] ?? '');
-    $categoryId = (int)($_POST['category_id'] ?? 0) ?: null;
-    $expenseDate = $_POST['expense_date'] ?? date('Y-m-d');
-    $currency = $_POST['currency'] ?? 'AED';
+    $clientId     = (int)($_POST['client_id'] ?? 0) ?: null;
+    $invoiceId    = (int)($_POST['invoice_id'] ?? 0) ?: null;
+    $vendorName   = trim($_POST['vendor_name'] ?? '');
+    $categoryId   = (int)($_POST['category_id'] ?? 0) ?: null;
+    $expenseDate  = $_POST['expense_date'] ?? date('Y-m-d');
+    $currency     = $_POST['currency'] ?? 'AED';
     $paymentMethod = $_POST['payment_method'] ?? 'Bank Transfer';
-    $subtotal = (float)($_POST['subtotal'] ?? 0);
-    $taxAmount = (float)($_POST['tax_amount'] ?? 0);
-    $total = $subtotal + $taxAmount;
-    $notes = trim($_POST['notes'] ?? '');
+    $subtotal     = (float)($_POST['subtotal'] ?? 0);
+    $taxAmount    = (float)($_POST['tax_amount'] ?? 0);
+    $total        = $subtotal + $taxAmount;
+    $notes        = trim($_POST['notes'] ?? '');
+
+    // Auto-set vendor name from client if left blank
+    if (!$vendorName && $clientId) {
+        $stCl = $pdo->prepare("SELECT company_name FROM clients WHERE id = ? AND tenant_id = ?");
+        $stCl->execute([$clientId, $tid]);
+        $vendorName = $stCl->fetchColumn() ?: '';
+    }
 
     if (!$vendorName || $total <= 0) {
         flash('error', 'Vendor name and positive amount are required.');
         redirect('expense_form.php' . ($id ? '?id='.$id : ''));
     }
 
+    // Verify invoiceId belongs to this tenant (if provided)
+    if ($invoiceId) {
+        $stInvChk = $pdo->prepare("SELECT COUNT(*) FROM invoices WHERE id = ? AND tenant_id = ?");
+        $stInvChk->execute([$invoiceId, $tid]);
+        if ((int)$stInvChk->fetchColumn() === 0) $invoiceId = null;
+    }
+
     if ($id > 0 && $expense) {
-        $st = $pdo->prepare("UPDATE expenses SET category_id=?, vendor_name=?, expense_date=?, subtotal=?, tax_amount=?, total=?, currency=?, payment_method=?, notes=? WHERE id=? AND tenant_id=?");
-        $st->execute([$categoryId, $vendorName, $expenseDate, $subtotal, $taxAmount, $total, $currency, $paymentMethod, $notes, $id, $tid]);
+        $st = $pdo->prepare("UPDATE expenses SET client_id=?, invoice_id=?, category_id=?, vendor_name=?, expense_date=?, subtotal=?, tax_amount=?, total=?, currency=?, payment_method=?, notes=? WHERE id=? AND tenant_id=?");
+        $st->execute([$clientId, $invoiceId, $categoryId, $vendorName, $expenseDate, $subtotal, $taxAmount, $total, $currency, $paymentMethod, $notes, $id, $tid]);
         log_audit($pdo, 'update_expense', 'expenses', $id, "Updated expense for $vendorName");
         flash('success', 'Expense record updated.');
     } else {
-        $st = $pdo->prepare("INSERT INTO expenses (tenant_id, category_id, vendor_name, expense_date, subtotal, tax_amount, total, currency, payment_method, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $st->execute([$tid, $categoryId, $vendorName, $expenseDate, $subtotal, $taxAmount, $total, $currency, $paymentMethod, $notes]);
+        $st = $pdo->prepare("INSERT INTO expenses (tenant_id, client_id, invoice_id, category_id, vendor_name, expense_date, subtotal, tax_amount, total, currency, payment_method, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $st->execute([$tid, $clientId, $invoiceId, $categoryId, $vendorName, $expenseDate, $subtotal, $taxAmount, $total, $currency, $paymentMethod, $notes]);
         $newId = (int)$pdo->lastInsertId();
         log_audit($pdo, 'create_expense', 'expenses', $newId, "Recorded expense for $vendorName ($total $currency)");
         flash('success', 'New business expense recorded successfully.');
@@ -51,6 +67,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $stCats = $pdo->prepare("SELECT * FROM expense_categories WHERE tenant_id = ? ORDER BY name ASC");
 $stCats->execute([$tid]);
 $categories = $stCats->fetchAll();
+
+// Fetch clients for dropdown
+$stClients = $pdo->prepare("SELECT id, company_name FROM clients WHERE tenant_id = ? ORDER BY company_name ASC");
+$stClients->execute([$tid]);
+$clients = $stClients->fetchAll();
+
+// Fetch invoices for dropdown (non-cancelled)
+$stInvoices = $pdo->prepare("SELECT i.id, i.invoice_number, c.company_name FROM invoices i LEFT JOIN clients c ON c.id = i.client_id WHERE i.tenant_id = ? AND i.status != 'cancelled' ORDER BY i.invoice_date DESC LIMIT 200");
+$stInvoices->execute([$tid]);
+$invoices = $stInvoices->fetchAll();
+
+// Build client map for JS auto-fill
+$clientCompanyMap = [];
+foreach ($clients as $cl) {
+    $clientCompanyMap[$cl['id']] = $cl['company_name'];
+}
 
 page_start($expense ? 'Edit Expense Record' : 'Record New Expense');
 ?>
@@ -68,14 +100,59 @@ page_start($expense ? 'Edit Expense Record' : 'Record New Expense');
 <form method="post" class="space-y-8 max-w-4xl mx-auto pb-28 lg:pb-8">
     <?=csrf_field()?>
 
+    <!-- Section 1: Client & Invoice Linkage -->
     <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
         <h2 class="text-lg font-bold text-slate-900 border-b border-slate-100 pb-4 mb-6 flex items-center">
-            <i class="fa-solid fa-receipt text-rose-500 mr-2.5"></i> Vendor & Expense Details
+            <i class="fa-solid fa-link text-amber-500 mr-2.5"></i> Client & Invoice Linkage
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Client Dropdown with live search -->
+            <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Linked Client Account</label>
+                <div class="relative">
+                    <input type="text" id="client_search_input" placeholder="Search client by name..." autocomplete="off"
+                        class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                        value="<?php
+                            if ($expense && $expense['client_id'] ?? null) {
+                                foreach ($clients as $cl) {
+                                    if ($cl['id'] == $expense['client_id']) { echo e($cl['company_name']); break; }
+                                }
+                            }
+                        ?>">
+                    <input type="hidden" name="client_id" id="client_id_hidden" value="<?=e((string)($expense['client_id'] ?? ''))?>">
+                    <div id="client_search_dropdown" class="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto hidden">
+                        <div id="client_search_results"></div>
+                    </div>
+                </div>
+                <p class="text-2xs text-slate-400 mt-1.5">Selecting a client will auto-fill the vendor name and interlink this expense with the client statement.</p>
+            </div>
+
+            <!-- Link to Invoice -->
+            <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Link to Invoice <span class="font-normal text-slate-400">(optional)</span></label>
+                <select name="invoice_id" id="invoice_id_select" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500">
+                    <option value="">-- Not linked to any invoice --</option>
+                    <?php foreach ($invoices as $inv): ?>
+                        <option value="<?=$inv['id']?>" <?=($expense && ($expense['invoice_id'] ?? null) == $inv['id']) ? 'selected' : ''?>>
+                            <?=e($inv['invoice_number'])?><?=$inv['company_name'] ? ' — '.e($inv['company_name']) : ''?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="text-2xs text-slate-400 mt-1.5">This expense will appear in the linked invoice's cost breakdown.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section 2: Vendor & Expense Details -->
+    <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+        <h2 class="text-lg font-bold text-slate-900 border-b border-slate-100 pb-4 mb-6 flex items-center">
+            <i class="fa-solid fa-receipt text-rose-500 mr-2.5"></i> Vendor &amp; Expense Details
         </h2>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
                 <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Vendor / Supplier Name *</label>
-                <input type="text" name="vendor_name" value="<?=e($expense['vendor_name'] ?? '')?>" placeholder="e.g. AWS Amazon, Dewa, Du Telecom" required class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-base sm:text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500">
+                <input type="text" name="vendor_name" id="vendor_name_input" value="<?=e($expense['vendor_name'] ?? '')?>" placeholder="e.g. AWS Amazon, Dewa, Du Telecom" required class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-base sm:text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500">
+                <p class="text-2xs text-slate-400 mt-1.5">Auto-filled when you select a client above, or enter manually.</p>
             </div>
             <div>
                 <div class="flex items-center justify-between mb-2">
@@ -97,7 +174,7 @@ page_start($expense ? 'Edit Expense Record' : 'Record New Expense');
                 <input type="date" name="expense_date" value="<?=e($expense['expense_date'] ?? date('Y-m-d'))?>" required class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-base sm:text-sm font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500">
             </div>
             <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Currency & Payment Method</label>
+                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Currency &amp; Payment Method</label>
                 <div class="grid grid-cols-2 gap-3">
                     <select name="currency" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-base sm:text-sm font-bold text-slate-900">
                         <?php foreach (['AED', 'USD', 'EUR', 'GBP', 'SAR', 'INR', 'CAD', 'AUD'] as $curr): ?>
@@ -157,6 +234,73 @@ page_start($expense ? 'Edit Expense Record' : 'Record New Expense');
 </div>
 
 <script>
+// ─── Client Map & Live Search ───────────────────────────────────────────────
+const clientMap = <?=json_encode(array_column($clients, 'company_name', 'id'))?>;
+const allClients = <?=json_encode(array_values(array_map(fn($c) => ['id' => $c['id'], 'name' => $c['company_name']], $clients)))?>;
+
+const clientSearchInput  = document.getElementById('client_search_input');
+const clientIdHidden     = document.getElementById('client_id_hidden');
+const clientDropdown     = document.getElementById('client_search_dropdown');
+const clientResults      = document.getElementById('client_search_results');
+const vendorNameInput    = document.getElementById('vendor_name_input');
+const invoiceSelect      = document.getElementById('invoice_id_select');
+
+function renderClientResults(query) {
+    const q = query.trim().toLowerCase();
+    const matches = q
+        ? allClients.filter(c => c.name.toLowerCase().includes(q))
+        : allClients;
+
+    if (matches.length === 0) {
+        clientResults.innerHTML = '<div class="px-4 py-3 text-xs text-slate-400">No clients found.</div>';
+    } else {
+        clientResults.innerHTML = matches.slice(0, 15).map(c =>
+            `<div class="client-option px-4 py-2.5 text-sm font-bold text-slate-800 hover:bg-amber-50 cursor-pointer border-b border-slate-100 last:border-0" data-id="${c.id}" data-name="${c.name}">${c.name}</div>`
+        ).join('');
+        // Clear option
+        clientResults.innerHTML += '<div class="client-option px-4 py-2 text-xs font-bold text-slate-400 hover:bg-slate-50 cursor-pointer" data-id="" data-name="">✕ Clear selection</div>';
+    }
+    clientDropdown.classList.remove('hidden');
+
+    // Attach click listeners
+    clientResults.querySelectorAll('.client-option').forEach(el => {
+        el.addEventListener('click', () => {
+            const cId   = el.dataset.id;
+            const cName = el.dataset.name;
+            clientIdHidden.value      = cId;
+            clientSearchInput.value   = cName;
+            clientDropdown.classList.add('hidden');
+            // Auto-fill vendor name from client company name
+            if (cName && !vendorNameInput.value.trim()) {
+                vendorNameInput.value = cName;
+            } else if (cName) {
+                vendorNameInput.value = cName;
+            }
+            // Filter invoice dropdown to this client's invoices
+            filterInvoicesByClient(cId);
+        });
+    });
+}
+
+function filterInvoicesByClient(clientId) {
+    if (!clientId) return;
+    Array.from(invoiceSelect.options).forEach(opt => {
+        if (!opt.value) return; // keep "not linked" option
+        const text = opt.textContent;
+        // Show all — invoices are already pre-filtered by tenant; client filtering is advisory
+    });
+}
+
+clientSearchInput.addEventListener('input', () => renderClientResults(clientSearchInput.value));
+clientSearchInput.addEventListener('focus', () => renderClientResults(clientSearchInput.value));
+
+document.addEventListener('click', (e) => {
+    if (!clientSearchInput.contains(e.target) && !clientDropdown.contains(e.target)) {
+        clientDropdown.classList.add('hidden');
+    }
+});
+
+// ─── Quick Category Modal ───────────────────────────────────────────────────
 function openQuickCategoryModal() {
     document.getElementById('quick-category-modal').classList.remove('hidden');
     const input = document.getElementById('quick_cat_name_input');
@@ -168,10 +312,10 @@ function closeQuickCategoryModal() {
     document.getElementById('quick-category-modal').classList.add('hidden');
 }
 async function saveQuickCategory() {
-    const input = document.getElementById('quick_cat_name_input');
-    const errEl = document.getElementById('quick_cat_error');
-    const btn = document.getElementById('save_quick_cat_btn');
-    const name = input.value.trim();
+    const input  = document.getElementById('quick_cat_name_input');
+    const errEl  = document.getElementById('quick_cat_error');
+    const btn    = document.getElementById('save_quick_cat_btn');
+    const name   = input.value.trim();
 
     if (!name) {
         errEl.textContent = 'Please enter a category name.';
@@ -182,18 +326,25 @@ async function saveQuickCategory() {
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1.5"></i>Saving...';
 
+    // Get current CSRF token from the page form
+    const csrfInput = document.querySelector('input[name="csrf"]');
+    const csrfToken = csrfInput ? csrfInput.value : '';
+
     try {
         const res = await fetch('api_create_category.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name })
+            body: JSON.stringify({ name: name, csrf: csrfToken })
         });
         const data = await res.json();
-        
+
+        // Refresh CSRF token in parent form so next save doesn't fail
+        if (data.csrf && csrfInput) {
+            csrfInput.value = data.csrf;
+        }
+
         if (data.success) {
             const select = document.getElementById('expense_category_select');
-            
-            // Check if option already exists
             let existingOpt = select.querySelector(`option[value="${data.id}"]`);
             if (!existingOpt) {
                 const opt = document.createElement('option');

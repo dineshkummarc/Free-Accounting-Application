@@ -217,7 +217,16 @@ function submitQuickAddClient(e) {
 
         if (data.success && data.client) {
             const newClient = data.client;
-            
+
+            // ── Refresh CSRF token in ALL forms on the page ──────────────────
+            // verify_csrf() rotates the session token on every successful call.
+            // If we don't update the hidden csrf fields, the parent form submit will fail.
+            if (data.csrf) {
+                document.querySelectorAll('input[name="csrf"]').forEach(f => {
+                    f.value = data.csrf;
+                });
+            }
+
             // Add new option to all client_id selects on the page
             document.querySelectorAll('select[name="client_id"]').forEach(sel => {
                 let existingOpt = sel.querySelector(`option[value="${newClient.id}"]`);
@@ -247,6 +256,19 @@ function submitQuickAddClient(e) {
                 if (optToSelect) {
                     currSelect.value = newClient.currency;
                 }
+            }
+
+            // Also trigger invoice VAT country detection if the function exists (invoice_form.php)
+            if (typeof updateClientCountryVat === 'function') {
+                // Update clientMap with the new client's data
+                if (typeof clientMap !== 'undefined') {
+                    clientMap[newClient.id] = {
+                        country: newClient.country || 'United Arab Emirates',
+                        tax_number: newClient.tax_number || '',
+                        currency: newClient.currency || 'AED'
+                    };
+                }
+                updateClientCountryVat();
             }
 
             // Close modal
