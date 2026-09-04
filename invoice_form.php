@@ -45,8 +45,8 @@ foreach ($clients as $c) {
 
 $nextInvNo = $invoice ? $invoice['invoice_number'] : invoice_number($pdo);
 
-// Fetch tenant users for Agent / Salesperson dropdown
-$stAgents = $pdo->prepare("SELECT u.id, u.name, ut.role FROM users u JOIN user_tenants ut ON ut.user_id = u.id WHERE ut.tenant_id = ? AND ut.role IN ('owner','admin','sales','accountant') ORDER BY u.name ASC");
+// Fetch dedicated Sales Agents & Channel Partners
+$stAgents = $pdo->prepare("SELECT * FROM sales_agents WHERE tenant_id = ? AND is_active = 1 ORDER BY type ASC, name ASC");
 $stAgents->execute([$tid]);
 $agents = $stAgents->fetchAll();
 
@@ -121,42 +121,39 @@ page_start($invoice ? 'Edit Tax Invoice' : 'Create Tax Invoice');
                     <option value="overdue" <?=($invoice['status'] ?? 'draft')==='overdue'?'selected':''?>>Overdue</option>
                 </select>
             </div>
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Design Template Style</label>
-                <?php
-                $currentTpl = $invoice['template_id'] ?? $brand['default_invoice_template'] ?? 'onesol_executive_gold';
-                $availableTpls = [
-                    'custom_drag_drop' => '⭐ Custom Drag & Drop Builder Design',
-                    'onesol_executive_gold' => '1. OneSol Executive Gold (Flagship)',
-                    'modern_minimal' => '2. Modern Minimalist',
-                    'corporate_executive' => '3. Corporate Executive',
-                    'creative_vibrant' => '4. Creative Vibrant',
-                    'sleek_dark' => '5. Sleek Dark Mode',
-                    'elegant_serif' => '6. Elegant Serif',
-                    'compact_thermal' => '7. Thermal POS Receipt',
-                    'tech_glassmorphism' => '8. Tech Glassmorphism',
-                    'swiss_grid' => '9. Swiss Grid Design',
-                    'borderless_clean' => '10. Borderless Clean',
-                    'twocolumn_split' => '11. Two-Column Split'
-                ];
-                ?>
-                <select name="template_id" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
-                    <?php foreach ($availableTpls as $tKey => $tLabel): ?>
-                        <option value="<?=$tKey?>" <?=$currentTpl === $tKey ? 'selected' : ''?>><?=e($tLabel)?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
+            <!-- Hidden Template ID (Design selection removed from form per requirement) -->
+            <input type="hidden" name="template_id" value="<?=e($invoice['template_id'] ?? $brand['default_invoice_template'] ?? 'onesol_executive_gold')?>">
 
-            <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Sales Agent / Account Manager</label>
-                <select name="agent_id" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
-                    <option value="">-- No Agent Assigned --</option>
-                    <?php foreach ($agents as $ag): ?>
-                        <option value="<?=$ag['id']?>" <?=($invoice && ($invoice['agent_id'] ?? null) == $ag['id']) ? 'selected' : ''?>>
-                            <?=e($ag['name'])?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
+            <!-- Section 1 Item: Sales Agent / Channel Partner with Quick Add & Commission Badge -->
+            <div class="md:col-span-2">
+                <div class="flex items-center justify-between mb-2">
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider">Sales Agent / Channel Partner</label>
+                    <button type="button" onclick="openAddAgentModal()" class="text-xs font-extrabold text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 px-2.5 py-1 rounded-lg border border-amber-200/80 transition-all flex items-center gap-1.5 shadow-2xs">
+                        <i class="fa-solid fa-user-plus text-3xs"></i> + Add Agent / Partner
+                    </button>
+                </div>
+                <div class="relative">
+                    <select name="agent_id" id="agent_id_select" onchange="handleAgentSelectChange(this)" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
+                        <option value="">-- No Agent / Partner Assigned --</option>
+                        <option value="__add_new_agent__" class="font-extrabold text-amber-600 bg-amber-50">+ Add New Agent / Channel Partner...</option>
+                        <?php foreach ($agents as $ag): 
+                            $badge = \Core\Commission::getBadge($ag);
+                            $typeLabel = $ag['type'] === 'channel_partner' ? 'Partner' : 'Agent';
+                        ?>
+                            <option value="<?=$ag['id']?>" 
+                                data-badge="<?=e($badge)?>"
+                                data-commission-type="<?=e($ag['commission_type'])?>"
+                                data-rate="<?=e($ag['rate'])?>"
+                                data-calculation-base="<?=e($ag['calculation_base'])?>"
+                                data-slab-json="<?=e(is_string($ag['slab_json']) ? $ag['slab_json'] : json_encode($ag['slab_json'] ?? []))?>"
+                                <?=($invoice && ($invoice['agent_id'] ?? null) == $ag['id']) ? 'selected' : ''?>>
+                                <?=e($ag['name'])?> (<?=e($typeLabel)?> • <?=e($badge)?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <!-- Commission preview badge -->
+                <div id="agent_commission_preview_badge" class="mt-2 hidden"></div>
             </div>
 
         </div>
@@ -541,6 +538,10 @@ function calculateTotals() {
     document.getElementById('live_discount').textContent = `${formatNum(discountAmount)} ${curr}`;
     document.getElementById('live_tax').textContent = `${formatNum(taxAmount)} ${curr}`;
     document.getElementById('live_grand_total').textContent = `${formatNum(grandTotal)} ${curr}`;
+
+    if (typeof updateAgentCommissionBadgePreview === 'function') {
+        updateAgentCommissionBadgePreview();
+    }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -562,5 +563,6 @@ document.addEventListener("DOMContentLoaded", () => {
 <?php
 require __DIR__ . '/add_client_modal.php';
 require __DIR__ . '/add_item_modal.php';
+require __DIR__ . '/add_agent_modal.php';
 page_end(); 
 ?>

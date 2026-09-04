@@ -245,6 +245,7 @@ function page_start(string $title): void {
         if (has_role(['owner', 'admin'])) {
             echo '<a href="users" class="flex items-center px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100/70 hover:text-blue-600 rounded-lg transition-colors cursor-pointer relative z-10"><i class="fa-solid fa-users-gear w-5 text-blue-500 text-center"></i><span>Team Members</span></a>';
         }
+        echo '<a href="sales_agents" class="flex items-center px-2.5 py-1.5 text-xs font-bold text-amber-950 bg-amber-50 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer relative z-10"><i class="fa-solid fa-handshake w-5 text-amber-600 text-center"></i><span>Sales Agents & Partners</span></a>';
         echo '</div>';
 
         // Group 5: Security & Integrations
@@ -422,6 +423,7 @@ function page_start(string $title): void {
         echo '<a href="billing" onclick="toggleMobileAppMenu()" class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl flex items-center space-x-2 text-slate-200 hover:text-white"><i class="fa-solid fa-credit-card text-amber-400"></i><span>Subscription Plan</span></a>';
         if (has_role(['owner', 'admin'])) {
             echo '<a href="users" onclick="toggleMobileAppMenu()" class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl flex items-center space-x-2 text-slate-200 hover:text-white"><i class="fa-solid fa-users-gear text-blue-400"></i><span>Team Members</span></a>';
+            echo '<a href="sales_agents" onclick="toggleMobileAppMenu()" class="bg-amber-500/20 border border-amber-500/40 p-2.5 rounded-xl flex items-center space-x-2 text-amber-300 font-bold"><i class="fa-solid fa-handshake"></i><span>Agents & Partners</span></a>';
             echo '<a href="payment_settings" onclick="toggleMobileAppMenu()" class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl flex items-center space-x-2 text-slate-200 hover:text-white"><i class="fa-solid fa-credit-card text-purple-400"></i><span>Payment Gateways</span></a>';
             echo '<a href="whatsapp_settings" onclick="toggleMobileAppMenu()" class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl flex items-center space-x-2 text-slate-200 hover:text-white"><i class="fa-brands fa-whatsapp text-emerald-400"></i><span>WhatsApp API</span></a>';
             echo '<a href="email_settings" onclick="toggleMobileAppMenu()" class="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl flex items-center space-x-2 text-slate-200 hover:text-white"><i class="fa-solid fa-server text-amber-400"></i><span>Custom SMTP</span></a>';

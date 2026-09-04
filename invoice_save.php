@@ -67,6 +67,23 @@ if ($taxAmount == 0 && $taxRateId > 0) {
 $total = round($netSubtotal + $taxAmount, 2);
 $notes = trim($_POST['notes'] ?? '');
 
+// Calculate Agent / Channel Partner Commission
+$commissionAmount = 0.00;
+if ($agentId > 0) {
+    $stAgentCheck = $pdo->prepare("SELECT * FROM sales_agents WHERE id = ? AND tenant_id = ?");
+    $stAgentCheck->execute([$agentId, $tid]);
+    $agentRow = $stAgentCheck->fetch();
+    if ($agentRow) {
+        $commissionAmount = \Core\Commission::calculate($agentRow, [
+            'total'       => $total,
+            'subtotal'    => $subtotal,
+            'paid_amount' => 0.00
+        ]);
+    } else {
+        $agentId = null;
+    }
+}
+
 try {
     $pdo->beginTransaction();
     
@@ -78,15 +95,15 @@ try {
             throw new RuntimeException('Invoice not found in your workspace.');
         }
 
-        $st = $pdo->prepare('UPDATE invoices SET invoice_number=?, client_id=?, agent_id=?, invoice_date=?, valid_until=?, status=?, currency=?, subtotal=?, discount_type=?, discount_value=?, discount_amount=?, tax_rate_id=?, tax_amount=?, total=?, notes=?, template_id=? WHERE id=? AND tenant_id=?');
-        $st->execute([$number, $client, $agentId, $date, $valid, $status, $currency, $subtotal, $type, $dv, $da, $taxRateId ?: null, $taxAmount, $total, $notes, $templateId, $id, $tid]);
+        $st = $pdo->prepare('UPDATE invoices SET invoice_number=?, client_id=?, agent_id=?, commission_amount=?, invoice_date=?, valid_until=?, status=?, currency=?, subtotal=?, discount_type=?, discount_value=?, discount_amount=?, tax_rate_id=?, tax_amount=?, total=?, notes=?, template_id=? WHERE id=? AND tenant_id=?');
+        $st->execute([$number, $client, $agentId, $commissionAmount, $date, $valid, $status, $currency, $subtotal, $type, $dv, $da, $taxRateId ?: null, $taxAmount, $total, $notes, $templateId, $id, $tid]);
 
         // Delete line items using tenant-bound JOIN
         $stDelItems = $pdo->prepare('DELETE ii FROM invoice_items ii JOIN invoices i ON i.id = ii.invoice_id WHERE ii.invoice_id = ? AND i.tenant_id = ?');
         $stDelItems->execute([$id, $tid]);
     } else {
-        $st = $pdo->prepare('INSERT INTO invoices (tenant_id, invoice_number, client_id, agent_id, invoice_date, valid_until, status, currency, subtotal, discount_type, discount_value, discount_amount, tax_rate_id, tax_amount, total, notes, template_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-        $st->execute([$tid, $number, $client, $agentId, $date, $valid, $status, $currency, $subtotal, $type, $dv, $da, $taxRateId ?: null, $taxAmount, $total, $notes, $templateId]);
+        $st = $pdo->prepare('INSERT INTO invoices (tenant_id, invoice_number, client_id, agent_id, commission_amount, invoice_date, valid_until, status, currency, subtotal, discount_type, discount_value, discount_amount, tax_rate_id, tax_amount, total, notes, template_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $st->execute([$tid, $number, $client, $agentId, $commissionAmount, $date, $valid, $status, $currency, $subtotal, $type, $dv, $da, $taxRateId ?: null, $taxAmount, $total, $notes, $templateId]);
         $id = (int)$pdo->lastInsertId();
     }
 

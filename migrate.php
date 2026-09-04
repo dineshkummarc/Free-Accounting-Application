@@ -181,10 +181,69 @@ function run_migrations(PDO $pdo): string {
     ensure_column($pdo, 'expenses', 'client_id', "INT UNSIGNED NULL AFTER category_id");
     ensure_column($pdo, 'expenses', 'invoice_id', "INT UNSIGNED NULL AFTER client_id");
 
-    // Invoice Enhancements — Sales Agent / Salesperson
+    // Invoice Enhancements — Sales Agent / Salesperson & Commission
     ensure_column($pdo, 'invoices', 'agent_id', "INT UNSIGNED NULL AFTER client_id");
+    ensure_column($pdo, 'invoices', 'commission_amount', "DECIMAL(12,2) NOT NULL DEFAULT 0.00 AFTER paid_amount");
+    ensure_column($pdo, 'invoices', 'commission_status', "ENUM('pending','approved','paid') NOT NULL DEFAULT 'pending' AFTER commission_amount");
 
-    $output[] = "Database schema updated successfully with Scoped API Keys, Recurring Invoices & Webhook Events tables.";
+    // Dedicated Sales Agents & Channel Partners Table
+    $pdo->exec("CREATE TABLE IF NOT EXISTS sales_agents (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
+        name VARCHAR(190) NOT NULL,
+        type ENUM('agent','channel_partner') NOT NULL DEFAULT 'agent',
+        email VARCHAR(190) NULL,
+        phone VARCHAR(60) NULL,
+        company_name VARCHAR(190) NULL,
+        commission_type ENUM('percentage','slab','fixed','milestone','custom') NOT NULL DEFAULT 'percentage',
+        calculation_base ENUM('total','subtotal','paid_amount') NOT NULL DEFAULT 'total',
+        rate DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
+        slab_json JSON NULL,
+        milestone_target DECIMAL(12,2) NULL,
+        milestone_rate DECIMAL(10,4) NULL,
+        custom_formula TEXT NULL,
+        notes TEXT NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_tenant (tenant_id),
+        INDEX idx_type (type),
+        INDEX idx_active (is_active)
+    ) ENGINE=InnoDB");
+
+    // Commission Rules Table
+    $pdo->exec("CREATE TABLE IF NOT EXISTS commission_rules (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        agent_id INT UNSIGNED NOT NULL,
+        tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
+        name VARCHAR(100) NULL,
+        commission_type ENUM('percentage','slab','fixed','milestone','custom') NOT NULL DEFAULT 'percentage',
+        calculation_base ENUM('total','subtotal','paid_amount') NOT NULL DEFAULT 'total',
+        rate DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
+        slab_json JSON NULL,
+        milestone_target DECIMAL(12,2) NULL,
+        milestone_rate DECIMAL(10,4) NULL,
+        custom_formula TEXT NULL,
+        priority INT NOT NULL DEFAULT 1,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_agent (agent_id),
+        INDEX idx_tenant (tenant_id)
+    ) ENGINE=InnoDB");
+
+    // Seed sample sales agent & channel partner for Tenant #1 if empty
+    $stCheckAgents = $pdo->query("SELECT COUNT(*) FROM sales_agents");
+    if ($stCheckAgents && $stCheckAgents->fetchColumn() == 0) {
+        $slabSample = json_encode([
+            ['from' => 0, 'to' => 10000, 'rate' => 3.0],
+            ['from' => 10000, 'to' => 50000, 'rate' => 5.0],
+            ['from' => 50000, 'to' => null, 'rate' => 8.0]
+        ]);
+        $pdo->exec("INSERT INTO sales_agents (tenant_id, name, type, email, phone, company_name, commission_type, calculation_base, rate, slab_json, notes) VALUES
+            (1, 'Ahmed Al Mansoori', 'agent', 'ahmed.sales@onesol.ae', '+971 50 112 3344', 'OneSol Direct Sales', 'percentage', 'total', 5.0000, NULL, 'Senior Sales Executive (5% flat commission on total revenue)'),
+            (1, 'Gulf Prime Partners', 'channel_partner', 'partners@gulfprime.com', '+971 4 332 9988', 'Gulf Prime Alliance Ltd', 'slab', 'total', 0.0000, '$slabSample', 'Authorized Channel Partner with tiered slab commission (3% up to 10k, 5% up to 50k, 8% above 50k)')");
+    }
+
+    $output[] = "Database schema updated successfully with Sales Agents, Channel Partners and Commission Rules.";
 
     return implode("<br>", $output);
 }
