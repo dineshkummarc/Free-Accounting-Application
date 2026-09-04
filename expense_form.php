@@ -73,8 +73,23 @@ $stClients = $pdo->prepare("SELECT id, company_name FROM clients WHERE tenant_id
 $stClients->execute([$tid]);
 $clients = $stClients->fetchAll();
 
-// Fetch invoices for dropdown (non-cancelled)
-$stInvoices = $pdo->prepare("SELECT i.id, i.invoice_number, c.company_name FROM invoices i LEFT JOIN clients c ON c.id = i.client_id WHERE i.tenant_id = ? AND i.status != 'cancelled' ORDER BY i.invoice_date DESC LIMIT 200");
+// Fetch invoices for searchable dropdown (non-cancelled)
+$stInvoices = $pdo->prepare("
+    SELECT 
+        i.id, 
+        i.invoice_number, 
+        i.invoice_date,
+        i.total, 
+        i.currency, 
+        i.status,
+        i.client_id, 
+        c.company_name 
+    FROM invoices i 
+    LEFT JOIN clients c ON c.id = i.client_id 
+    WHERE i.tenant_id = ? AND i.status != 'cancelled' 
+    ORDER BY i.invoice_date DESC, i.id DESC 
+    LIMIT 300
+");
 $stInvoices->execute([$tid]);
 $invoices = $stInvoices->fetchAll();
 
@@ -82,6 +97,16 @@ $invoices = $stInvoices->fetchAll();
 $clientCompanyMap = [];
 foreach ($clients as $cl) {
     $clientCompanyMap[$cl['id']] = $cl['company_name'];
+}
+
+$linkedInvoiceLabel = '';
+if ($expense && !empty($expense['invoice_id'])) {
+    foreach ($invoices as $inv) {
+        if ($inv['id'] == $expense['invoice_id']) {
+            $linkedInvoiceLabel = $inv['invoice_number'] . ($inv['company_name'] ? ' — ' . $inv['company_name'] : '');
+            break;
+        }
+    }
 }
 
 page_start($expense ? 'Edit Expense Record' : 'Record New Expense');
@@ -108,17 +133,29 @@ page_start($expense ? 'Edit Expense Record' : 'Record New Expense');
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Client Dropdown with live search -->
             <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Linked Client Account</label>
+                <div class="flex items-center justify-between mb-2">
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider">Linked Client Account</label>
+                    <button type="button" id="clear_client_btn" onclick="clearSelectedClient()" 
+                        class="text-2xs font-extrabold text-slate-400 hover:text-rose-600 transition-colors <?=empty($expense['client_id']) ? 'hidden' : ''?>">
+                        <i class="fa-solid fa-xmark mr-0.5"></i> Clear client
+                    </button>
+                </div>
                 <div class="relative">
-                    <input type="text" id="client_search_input" placeholder="Search client by name..." autocomplete="off"
-                        class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
-                        value="<?php
-                            if ($expense && $expense['client_id'] ?? null) {
-                                foreach ($clients as $cl) {
-                                    if ($cl['id'] == $expense['client_id']) { echo e($cl['company_name']); break; }
+                    <div class="relative">
+                        <input type="text" id="client_search_input" placeholder="Search client by name..." autocomplete="off"
+                            class="w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-8 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
+                            value="<?php
+                                if ($expense && $expense['client_id'] ?? null) {
+                                    foreach ($clients as $cl) {
+                                        if ($cl['id'] == $expense['client_id']) { echo e($cl['company_name']); break; }
+                                    }
                                 }
-                            }
-                        ?>">
+                            ?>">
+                        <i class="fa-solid fa-user-tie absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+                        <button type="button" onclick="toggleClientDropdown()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-1">
+                            <i class="fa-solid fa-chevron-down text-3xs"></i>
+                        </button>
+                    </div>
                     <input type="hidden" name="client_id" id="client_id_hidden" value="<?=e((string)($expense['client_id'] ?? ''))?>">
                     <div id="client_search_dropdown" class="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-52 overflow-y-auto hidden">
                         <div id="client_search_results"></div>
@@ -127,18 +164,33 @@ page_start($expense ? 'Edit Expense Record' : 'Record New Expense');
                 <p class="text-2xs text-slate-400 mt-1.5">Selecting a client will auto-fill the vendor name and interlink this expense with the client statement.</p>
             </div>
 
-            <!-- Link to Invoice -->
+            <!-- Link to Invoice with Live Search -->
             <div>
-                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">Link to Invoice <span class="font-normal text-slate-400">(optional)</span></label>
-                <select name="invoice_id" id="invoice_id_select" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500">
-                    <option value="">-- Not linked to any invoice --</option>
-                    <?php foreach ($invoices as $inv): ?>
-                        <option value="<?=$inv['id']?>" <?=($expense && ($expense['invoice_id'] ?? null) == $inv['id']) ? 'selected' : ''?>>
-                            <?=e($inv['invoice_number'])?><?=$inv['company_name'] ? ' — '.e($inv['company_name']) : ''?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-                <p class="text-2xs text-slate-400 mt-1.5">This expense will appear in the linked invoice's cost breakdown.</p>
+                <div class="flex items-center justify-between mb-2">
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider">
+                        Link to Invoice <span class="font-normal text-slate-400">(optional)</span>
+                    </label>
+                    <button type="button" id="clear_invoice_btn" onclick="clearSelectedInvoice()" 
+                        class="text-2xs font-extrabold text-slate-400 hover:text-rose-600 transition-colors <?=empty($expense['invoice_id']) ? 'hidden' : ''?>">
+                        <i class="fa-solid fa-xmark mr-0.5"></i> Clear link
+                    </button>
+                </div>
+                <div class="relative">
+                    <div class="relative">
+                        <input type="text" id="invoice_search_input" placeholder="Search invoice #, client, amount..." autocomplete="off"
+                            class="w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-8 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
+                            value="<?=e($linkedInvoiceLabel)?>">
+                        <i class="fa-solid fa-file-invoice absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
+                        <button type="button" onclick="toggleInvoiceDropdown()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs p-1">
+                            <i class="fa-solid fa-chevron-down text-3xs"></i>
+                        </button>
+                    </div>
+                    <input type="hidden" name="invoice_id" id="invoice_id_hidden" value="<?=e((string)($expense['invoice_id'] ?? ''))?>">
+                    <div id="invoice_search_dropdown" class="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto hidden">
+                        <div id="invoice_search_results"></div>
+                    </div>
+                </div>
+                <p class="text-2xs text-slate-400 mt-1.5">Search by invoice number or client name. This expense will link directly to that invoice.</p>
             </div>
         </div>
     </div>
@@ -238,15 +290,50 @@ page_start($expense ? 'Edit Expense Record' : 'Record New Expense');
 const clientMap = <?=json_encode(array_column($clients, 'company_name', 'id'))?>;
 const allClients = <?=json_encode(array_values(array_map(fn($c) => ['id' => $c['id'], 'name' => $c['company_name']], $clients)))?>;
 
+// ─── Invoice List & Live Search ────────────────────────────────────────────
+const allInvoices = <?=json_encode(array_values(array_map(fn($i) => [
+    'id'        => (int)$i['id'],
+    'number'    => $i['invoice_number'],
+    'company'   => $i['company_name'] ?: 'No Client Account',
+    'client_id' => (int)($i['client_id'] ?? 0),
+    'total'     => (float)$i['total'],
+    'currency'  => $i['currency'] ?? 'AED',
+    'status'    => $i['status'] ?? 'draft',
+    'date'      => $i['invoice_date']
+], $invoices)))?>;
+
 const clientSearchInput  = document.getElementById('client_search_input');
 const clientIdHidden     = document.getElementById('client_id_hidden');
 const clientDropdown     = document.getElementById('client_search_dropdown');
 const clientResults      = document.getElementById('client_search_results');
+const clearClientBtn      = document.getElementById('clear_client_btn');
+
+const invoiceSearchInput  = document.getElementById('invoice_search_input');
+const invoiceIdHidden     = document.getElementById('invoice_id_hidden');
+const invoiceDropdown     = document.getElementById('invoice_search_dropdown');
+const invoiceResults      = document.getElementById('invoice_search_results');
+const clearInvoiceBtn     = document.getElementById('clear_invoice_btn');
+
 const vendorNameInput    = document.getElementById('vendor_name_input');
-const invoiceSelect      = document.getElementById('invoice_id_select');
+
+function toggleClientDropdown() {
+    if (clientDropdown.classList.contains('hidden')) {
+        renderClientResults(clientSearchInput.value);
+    } else {
+        clientDropdown.classList.add('hidden');
+    }
+}
+
+function toggleInvoiceDropdown() {
+    if (invoiceDropdown.classList.contains('hidden')) {
+        renderInvoiceResults(invoiceSearchInput.value);
+    } else {
+        invoiceDropdown.classList.add('hidden');
+    }
+}
 
 function renderClientResults(query) {
-    const q = query.trim().toLowerCase();
+    const q = (query || '').trim().toLowerCase();
     const matches = q
         ? allClients.filter(c => c.name.toLowerCase().includes(q))
         : allClients;
@@ -255,10 +342,12 @@ function renderClientResults(query) {
         clientResults.innerHTML = '<div class="px-4 py-3 text-xs text-slate-400">No clients found.</div>';
     } else {
         clientResults.innerHTML = matches.slice(0, 15).map(c =>
-            `<div class="client-option px-4 py-2.5 text-sm font-bold text-slate-800 hover:bg-amber-50 cursor-pointer border-b border-slate-100 last:border-0" data-id="${c.id}" data-name="${c.name}">${c.name}</div>`
+            `<div class="client-option px-4 py-2.5 text-sm font-bold text-slate-800 hover:bg-amber-50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors" data-id="${c.id}" data-name="${c.name}">
+                <i class="fa-solid fa-building text-3xs text-slate-400 mr-2"></i>${c.name}
+            </div>`
         ).join('');
         // Clear option
-        clientResults.innerHTML += '<div class="client-option px-4 py-2 text-xs font-bold text-slate-400 hover:bg-slate-50 cursor-pointer" data-id="" data-name="">✕ Clear selection</div>';
+        clientResults.innerHTML += '<div class="client-option px-4 py-2 text-xs font-bold text-slate-400 hover:bg-rose-50 hover:text-rose-700 cursor-pointer border-t border-slate-100 transition-colors" data-id="" data-name="">✕ Clear client selection</div>';
     }
     clientDropdown.classList.remove('hidden');
 
@@ -270,33 +359,178 @@ function renderClientResults(query) {
             clientIdHidden.value      = cId;
             clientSearchInput.value   = cName;
             clientDropdown.classList.add('hidden');
+            if (clearClientBtn) {
+                if (cId) clearClientBtn.classList.remove('hidden');
+                else clearClientBtn.classList.add('hidden');
+            }
+
             // Auto-fill vendor name from client company name
-            if (cName && !vendorNameInput.value.trim()) {
+            if (cName && (!vendorNameInput.value.trim() || vendorNameInput.value === '')) {
                 vendorNameInput.value = cName;
             } else if (cName) {
                 vendorNameInput.value = cName;
             }
-            // Filter invoice dropdown to this client's invoices
-            filterInvoicesByClient(cId);
+
+            // If an invoice is currently linked from another client, clear it
+            if (cId && invoiceIdHidden.value) {
+                const curInv = allInvoices.find(i => i.id == invoiceIdHidden.value);
+                if (curInv && curInv.client_id && curInv.client_id != cId) {
+                    clearSelectedInvoice();
+                }
+            }
         });
     });
 }
 
-function filterInvoicesByClient(clientId) {
-    if (!clientId) return;
-    Array.from(invoiceSelect.options).forEach(opt => {
-        if (!opt.value) return; // keep "not linked" option
-        const text = opt.textContent;
-        // Show all — invoices are already pre-filtered by tenant; client filtering is advisory
+function clearSelectedClient() {
+    clientIdHidden.value = '';
+    clientSearchInput.value = '';
+    if (clearClientBtn) clearClientBtn.classList.add('hidden');
+}
+
+function renderInvoiceResults(query = '') {
+    const q = (query || '').trim().toLowerCase();
+    const activeClientId = clientIdHidden.value ? parseInt(clientIdHidden.value) : null;
+
+    let matches = allInvoices;
+    if (q) {
+        matches = allInvoices.filter(inv => 
+            inv.number.toLowerCase().includes(q) ||
+            inv.company.toLowerCase().includes(q) ||
+            inv.total.toString().includes(q)
+        );
+    } else if (activeClientId) {
+        // If no query typed yet and client selected, show this client's invoices first
+        const clientInvoices = allInvoices.filter(inv => inv.client_id === activeClientId);
+        if (clientInvoices.length > 0) {
+            matches = clientInvoices;
+        }
+    }
+
+    if (matches.length === 0) {
+        invoiceResults.innerHTML = `
+            <div class="px-4 py-3 text-xs text-slate-400 text-center">
+                <i class="fa-solid fa-file-invoice text-slate-300 text-base mb-1 block"></i>
+                No matching invoices found.
+                ${activeClientId ? `<div class="mt-1"><button type="button" onclick="showAllInvoices(event)" class="text-amber-600 font-bold hover:underline">Show all invoices</button></div>` : ''}
+            </div>
+        `;
+    } else {
+        let headerHtml = '';
+        if (!q && activeClientId && matches.length < allInvoices.length) {
+            headerHtml = `
+                <div class="px-3.5 py-1.5 bg-amber-50 text-amber-900 border-b border-amber-100 text-3xs font-extrabold flex items-center justify-between">
+                    <span>Invoices for selected client (${matches.length})</span>
+                    <button type="button" onclick="showAllInvoices(event)" class="text-amber-700 underline hover:text-amber-900">Show all (${allInvoices.length})</button>
+                </div>
+            `;
+        }
+
+        invoiceResults.innerHTML = headerHtml + matches.slice(0, 25).map(inv => {
+            const isSelected = (invoiceIdHidden.value == inv.id);
+            const statusColors = {
+                paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                partially_paid: 'bg-blue-50 text-blue-700 border-blue-200',
+                sent: 'bg-purple-50 text-purple-700 border-purple-200',
+                draft: 'bg-slate-100 text-slate-600 border-slate-200',
+                overdue: 'bg-rose-50 text-rose-700 border-rose-200'
+            };
+            const statusClass = statusColors[inv.status] || 'bg-slate-100 text-slate-600 border-slate-200';
+
+            return `
+                <div class="invoice-option px-4 py-2.5 hover:bg-amber-50/80 cursor-pointer border-b border-slate-100 last:border-0 transition-colors ${isSelected ? 'bg-amber-50/50' : ''}" 
+                     data-id="${inv.id}" 
+                     data-number="${inv.number}" 
+                     data-company="${inv.company}" 
+                     data-client-id="${inv.client_id}">
+                    <div class="flex items-center justify-between">
+                        <div class="font-extrabold text-xs text-slate-900 flex items-center gap-1.5">
+                            <i class="fa-solid fa-file-invoice text-amber-500 text-xs"></i>
+                            <span>${inv.number}</span>
+                            <span class="px-1.5 py-0.2 rounded-full text-4xs font-bold border uppercase ${statusClass}">${inv.status.replace('_', ' ')}</span>
+                        </div>
+                        <span class="text-xs font-black text-slate-900 font-mono">${inv.total.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="text-3xs text-slate-500 font-semibold">${inv.currency}</span></span>
+                    </div>
+                    <div class="text-3xs text-slate-500 flex items-center justify-between mt-1">
+                        <span class="truncate max-w-[220px] font-semibold text-slate-600"><i class="fa-solid fa-building text-3xs text-slate-400 mr-1"></i>${inv.company}</span>
+                        <span class="text-slate-400 font-medium"><i class="fa-regular fa-calendar text-3xs mr-1"></i>${inv.date}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Clear / unlinked option
+        invoiceResults.innerHTML += `
+            <div class="invoice-option px-4 py-2 text-xs font-bold text-slate-400 hover:bg-rose-50 hover:text-rose-700 cursor-pointer border-t border-slate-100 transition-colors flex items-center gap-1.5" 
+                 data-id="" data-number="" data-company="" data-client-id="">
+                <i class="fa-solid fa-link-slash text-3xs"></i>
+                <span>-- Not linked to any invoice --</span>
+            </div>
+        `;
+    }
+
+    invoiceDropdown.classList.remove('hidden');
+
+    // Attach click listeners to invoice options
+    invoiceResults.querySelectorAll('.invoice-option').forEach(el => {
+        el.addEventListener('click', () => {
+            const iId = el.dataset.id;
+            const iNum = el.dataset.number;
+            const iComp = el.dataset.company;
+            const iClientId = el.dataset.clientId;
+
+            selectInvoice(iId, iNum, iComp, iClientId);
+        });
     });
+}
+
+function selectInvoice(id, number, company, clientId) {
+    invoiceIdHidden.value = id || '';
+    if (id) {
+        invoiceSearchInput.value = `${number} — ${company}`;
+        if (clearInvoiceBtn) clearInvoiceBtn.classList.remove('hidden');
+
+        // Auto-link client if not selected yet
+        if (clientId && clientId !== '0' && (!clientIdHidden.value || clientIdHidden.value == '0')) {
+            const matchingClient = allClients.find(c => c.id == clientId);
+            if (matchingClient) {
+                clientIdHidden.value = matchingClient.id;
+                clientSearchInput.value = matchingClient.name;
+                if (clearClientBtn) clearClientBtn.classList.remove('hidden');
+                if (!vendorNameInput.value.trim()) {
+                    vendorNameInput.value = matchingClient.name;
+                }
+            }
+        }
+    } else {
+        invoiceSearchInput.value = '';
+        if (clearInvoiceBtn) clearInvoiceBtn.classList.add('hidden');
+    }
+    invoiceDropdown.classList.add('hidden');
+}
+
+function clearSelectedInvoice() {
+    selectInvoice('', '', '', '');
+}
+
+function showAllInvoices(e) {
+    if (e) e.stopPropagation();
+    renderInvoiceResults(' ');
+    invoiceSearchInput.focus();
 }
 
 clientSearchInput.addEventListener('input', () => renderClientResults(clientSearchInput.value));
 clientSearchInput.addEventListener('focus', () => renderClientResults(clientSearchInput.value));
 
+invoiceSearchInput.addEventListener('input', () => renderInvoiceResults(invoiceSearchInput.value));
+invoiceSearchInput.addEventListener('focus', () => renderInvoiceResults(invoiceSearchInput.value));
+
 document.addEventListener('click', (e) => {
     if (!clientSearchInput.contains(e.target) && !clientDropdown.contains(e.target)) {
         clientDropdown.classList.add('hidden');
+    }
+    if (!invoiceSearchInput.contains(e.target) && !invoiceDropdown.contains(e.target)) {
+        invoiceDropdown.classList.add('hidden');
     }
 });
 
