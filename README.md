@@ -106,6 +106,25 @@ graph TD
 - **Accounts Receivable (A/R) Aging Report**: 30 / 60 / 90+ day overdue buckets.
 - **Universal CSV & PDF Exports**: 1-click CSV file downloads across all reporting pages.
 
+### 🤝 Sales Agents, Channel Partners & Commission Management
+- **Dedicated Partner Directory (`sales_agents.php`)**: Manage internal sales executives and external channel partners / brokers separately from system login users.
+- **5 Commission Calculation Structures**:
+  - **Flat Percentage (%)**: Fixed % applied to gross total, subtotal, or collected cash.
+  - **Tiered / Progressive Slabs**: Marginal revenue bands (e.g. 0–10k @ 3%, 10k–50k @ 5%, 50k+ @ 8%).
+  - **Fixed Amount Per Deal**: Lump-sum fee earned per invoice or deal closed.
+  - **Target Milestone**: Baseline rate that upgrades to higher commission % upon reaching a sales target threshold.
+  - **Custom Formula Builder**: Dynamic arithmetic expressions using `{amount}`, `{total}`, `{subtotal}`, and `{paid_amount}` tokens.
+- **Configurable Calculation Base**: Total (gross incl. VAT), Subtotal (net excl. VAT), or Paid Amount (only on collected payments).
+- **Interactive Live Simulator**: Real-time commission calculator inside modals and management hub to preview payouts and effective rates before saving.
+- **Direct Invoice Attribution & Real-Time Preview**: Assign agents or quickly create new partners right on the invoice form with dynamic estimated commission preview badge.
+- **Partner Sales & Commission Reporting (`reports_client_sales.php`)**: Full analytics breakdown showing Total Invoices, Gross Volume, Collected Cash, and Accrued Commission with collection rate bars.
+
+### 💼 Interlinked Expense & Vendor Cost Management
+- **Client & Invoice Cost Allocation (`expenses.php` & `expense_form.php`)**: Link any business expense or vendor bill directly to a specific Client Account and Invoice ID.
+- **Client Search & Auto-Select**: Fast search-as-you-type client picker.
+- **Client Statement Integration**: Interlinked expenses automatically feed into client financial statements for project cost and margin visibility.
+- **Quick-Add Expense Categories**: Instant modal to create new expense categories on the fly without page reloads.
+
 ### 🔄 Auto-Subscription Billing & Integrations
 - **Subscription Billing Manager (`recurring_invoices.php`)**: Automated recurring billing profiles (Weekly, Monthly, Quarterly, Yearly).
 - **Stripe & Webhook Integration**: Online credit card payment sync via webhooks.

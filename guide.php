@@ -340,7 +340,7 @@ details[open] > summary .faq-arrow { transform: rotate(180deg); }
         <div class="flex items-center space-x-2">
             <i class="fa-solid fa-list-ul text-slate-500"></i>
             <span class="font-extrabold text-slate-800 text-sm">Table of Contents</span>
-            <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-2xs font-bold">24 Chapters</span>
+            <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-2xs font-bold">25 Chapters</span>
         </div>
         <button onclick="document.getElementById('toc-grid').classList.toggle('hidden')" class="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center space-x-1 transition-colors">
             <span id="toc-toggle-label">Collapse</span>
@@ -373,7 +373,8 @@ details[open] > summary .faq-arrow { transform: rotate(180deg); }
             ['ch21', 'rotate',              'bg-amber-600',  'text-amber-600',  'bg-amber-50  border-amber-200',  '21', 'Auto-Recurring Billing',  'Automated subscription cron engine (cron_recurring.php) generating invoices.'],
             ['ch22', 'user-lock',           'bg-emerald-600','text-emerald-600','bg-emerald-50 border-emerald-200','22','Client Portal Hub',       'Passwordless client login hub (client_portal.php) for online payments.'],
             ['ch23', 'whatsapp',            'bg-emerald-500','text-emerald-500','bg-emerald-50 border-emerald-200','23','WhatsApp Cloud API',     'Meta WhatsApp Cloud API gateway (whatsapp_settings.php) for instant dispatch.'],
-            ['ch24', 'coins',               'bg-cyan-600',   'text-cyan-600',   'bg-cyan-50   border-cyan-200',   '24', 'CBUAE Live FX Sync',     'Automated exchange rate sync (cron_exchange_rates.php) for USD, EUR to AED.'],
+            ['ch24', 'coins',               'bg-cyan-600',   'text-cyan-600',   'bg-cyan-50   border-cyan-200',   '24', 'CBUAE Live FX Sync',     'Automated daily exchange rate synchronization for USD, EUR to AED.'],
+            ['ch25', 'handshake',           'bg-amber-600',  'text-amber-600',  'bg-amber-50  border-amber-200',  '25', 'Sales Agents & Commissions', 'Sales reps, broker networks, slab/tiered/percentage commission rules, and live preview.'],
         ];
         foreach ($chapters as $i => [$id, $icon, $bg, $tc, $cardBg, $num, $title, $desc]) {
             $border = $i > 0 && $i % 3 !== 0 ? '' : '';
@@ -564,6 +565,9 @@ faq("Can I edit an invoice after saving it?", "Yes — invoices can be edited fr
 faq("How do I void or cancel an invoice?", "Open the invoice and click <strong>Void Invoice</strong>. This marks the invoice as cancelled without deleting it, preserving the audit record. A voided invoice cannot be re-opened; create a new invoice if re-billing is needed.");
 faq("Can I duplicate an existing invoice?", "Yes — on the invoice view page, click <strong>'Duplicate Invoice'</strong> to create a new draft copy with the same client, line items, and amounts. Update the date and any modified amounts before saving the new copy.");
 faq("Is there a client-facing public invoice link?", "Yes — every invoice has a unique public URL (e.g. <code>/public_invoice?token=abc123</code>) that you can share with your client. They can view the invoice, download the PDF, and pay online without needing an account login.");
+faq("Can I assign a Sales Agent or Channel Partner to an invoice?", "Yes! In the invoice header, you can choose a <strong>Sales Agent / Channel Partner</strong>. The system immediately shows their commission structure badge and dynamically computes an <strong>estimated commission</strong> preview in real time as you adjust line items and totals. The commission is automatically calculated and recorded when you save.");
+faq("Can I register a new client or channel partner directly while creating an invoice?", "Yes! Both the Client Account and Sales Agent selectors feature quick-add buttons (<strong>'+ Add Client'</strong> and <strong>'+ Add Agent / Partner'</strong>). When you add a new client or partner from the invoice form, the record is created, immediately auto-selected, and CSRF session tokens are automatically refreshed so your unsaved line items are preserved safely without token expiration errors.");
+faq("Where do I set the default invoice design template?", "To keep invoice generation uncluttered, fast, and consistent, the visual template dropdown was removed from the creation form. Invoices automatically inherit your company's master design template configured under <strong>Management → Invoice Design & Templates</strong> (or keep their existing layout upon editing).");
 ?>
 </div>
 </section>
@@ -1006,6 +1010,7 @@ faq("How do I view the Chart of Accounts?", "Go to <strong>Reports → Chart of 
 
     <ul class="list-disc pl-5 space-y-1 text-xs">
         <li>Record expenses with category (e.g., Office Rent, Software Subscription, Marketing).</li>
+        <li><strong>Client & Invoice Interlinking:</strong> Link any business expense directly to a specific Client Account and Invoice ID for project accounting and statement tracking.</li>
         <li>Attach receipt images or PDF uploads as documentary evidence.</li>
         <li>Flag input VAT on supplier invoices for VAT return recovery claims.</li>
         <li>All expenses automatically flow into the P&L Expenses section and Cash Flow Statement.</li>
@@ -1016,6 +1021,8 @@ faq("How do I view the Chart of Accounts?", "Go to <strong>Reports → Chart of 
 <div class="space-y-2">
 <?php
 faq("How do I log a new business expense?", "Go to <strong>Expenses</strong> in the top navigation. Click <strong>'+ Record Expense'</strong>. Enter: Expense Category, Vendor/Supplier Name, Amount, Date, VAT amount (if applicable), and any notes. Upload a receipt photo or PDF if available. Click Save.");
+faq("Can I link an expense to a specific client or invoice?", "Yes! Use the <strong>Client Account</strong> selector on the expense form (with instant search) to associate the expenditure with a specific client. You can also specify an <strong>Invoice ID</strong> to attribute vendor costs to a particular client contract or project. Linked expenses automatically show up in client statements and project analytics.");
+faq("Can I create a new expense category on the fly?", "Yes! Click the <strong>'+ Add Category'</strong> button next to the Expense Category dropdown on the expense form. Enter the new category title, and it is saved and selected immediately without page reloading.");
 faq("Does recording expenses affect my P&L report?", "Yes — every recorded expense immediately appears in your Profit & Loss statement under the Expenses section. Higher expenses reduce your reported net profit. Ensure expenses are correctly categorized to maintain accurate financial reporting.");
 faq("Can I claim VAT on my business expenses?", "Yes — when recording a supplier expense, enter the input VAT amount paid. This feeds into the Tax/VAT Return report as <strong>Input Tax</strong> which is offset against Output VAT collected on your invoices, reducing your net VAT payable.");
 faq("Can I attach receipts to expense records?", "Yes — the expense form includes a file upload field. Attach PNG, JPG, or PDF receipt files as documentary evidence. Attached files are stored alongside the expense record for audit trail purposes and can be downloaded anytime.");
@@ -1294,6 +1301,77 @@ faq("How do I contact support if I have an issue not covered in this guide?", "P
     <p class="text-xs text-slate-600 leading-relaxed mb-4">
         Automated daily background worker <code>cron_exchange_rates.php</code> queries official central bank rates to keep multi-currency foreign exchange rates (USD, EUR, GBP, SAR, INR to AED) updated in real-time.
     </p>
+</section>
+
+<!-- CHAPTER 25: SALES AGENTS & COMMISSION MANAGEMENT -->
+<section id="ch25" class="guide-topic bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm scroll-mt-20">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 border-b border-slate-100 mb-6 gap-3">
+        <div class="flex items-center space-x-3">
+            <div class="h-10 w-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-bold text-lg">
+                <i class="fa-solid fa-handshake"></i>
+            </div>
+            <div>
+                <h2 class="text-xl font-extrabold text-slate-900">Chapter 25: Sales Agents, Channel Partners & Commission Rules</h2>
+                <p class="text-xs text-slate-500">Manage internal sales executives, broker networks, tiered slab commissions, and performance reporting.</p>
+            </div>
+        </div>
+        <?php launch_btn('sales_agents', 'handshake', 'Manage Partners', 'bg-amber-600') ?>
+    </div>
+
+    <div class="text-sm text-slate-600 space-y-4 mb-6">
+        <p>The <strong>Sales Agents & Channel Partners</strong> module allows you to organize your internal sales force, external brokers, agencies, and channel partners with customized, multi-tiered commission calculation structures.</p>
+
+        <h4 class="font-extrabold text-slate-900 text-xs uppercase tracking-wider">Supported Commission Models</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs my-3">
+            <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-slate-800">
+                <div class="font-extrabold text-amber-900 flex items-center gap-1.5 mb-1"><i class="fa-solid fa-percent text-amber-600"></i>Flat Percentage (%)</div>
+                <p class="text-2xs text-slate-600">Fixed percentage rate applied to the selected calculation base (e.g. 5% on every invoice).</p>
+            </div>
+            <div class="p-3.5 rounded-xl bg-purple-50 border border-purple-200 text-slate-800">
+                <div class="font-extrabold text-purple-900 flex items-center gap-1.5 mb-1"><i class="fa-solid fa-layer-group text-purple-600"></i>Progressive Tiered Slabs</div>
+                <p class="text-2xs text-slate-600">Marginal brackets with custom tiers (e.g., 0–10k @ 3%, 10k–50k @ 5%, 50k+ @ 8%). Higher deal amounts earn higher marginal rates.</p>
+            </div>
+            <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-slate-800">
+                <div class="font-extrabold text-emerald-900 flex items-center gap-1.5 mb-1"><i class="fa-solid fa-money-bill-wave text-emerald-600"></i>Fixed Amount Per Deal</div>
+                <p class="text-2xs text-slate-600">A fixed lump-sum amount earned per issued or closed invoice (e.g. AED 500 per transaction).</p>
+            </div>
+            <div class="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-slate-800">
+                <div class="font-extrabold text-blue-900 flex items-center gap-1.5 mb-1"><i class="fa-solid fa-bullseye text-blue-600"></i>Target Milestone</div>
+                <p class="text-2xs text-slate-600">Baseline rate (e.g. 2%) that automatically upgrades to a higher rate (e.g. 6%) when the deal value hits or exceeds a target threshold.</p>
+            </div>
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 sm:col-span-2">
+                <div class="font-extrabold text-slate-900 flex items-center gap-1.5 mb-1"><i class="fa-solid fa-code text-indigo-600"></i>Custom Formula Expression</div>
+                <p class="text-2xs text-slate-600">Build custom arithmetic expressions using dynamic tokens: <code>{amount}</code>, <code>{total}</code>, <code>{subtotal}</code>, and <code>{paid_amount}</code> (e.g. <code>({total} - 1000) * 0.07</code>).</p>
+            </div>
+        </div>
+
+        <h4 class="font-extrabold text-slate-900 text-xs uppercase tracking-wider mt-4">Flexible Calculation Bases</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-2xs font-semibold">
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <strong class="text-slate-900 block mb-0.5">1. Gross Total (incl. VAT)</strong>
+                Calculated on the complete invoice payable sum including taxes.
+            </div>
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <strong class="text-slate-900 block mb-0.5">2. Net Subtotal (excl. VAT)</strong>
+                Calculated strictly on product/service volume before VAT is added.
+            </div>
+            <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <strong class="text-slate-900 block mb-0.5">3. Paid Amount (Collected)</strong>
+                Commission only accrues on actual settled cash payments received from the client.
+            </div>
+        </div>
+    </div>
+
+    <h4 class="font-extrabold text-slate-900 text-xs uppercase tracking-wider mb-3">Partner & Commission FAQs</h4>
+    <div class="space-y-2">
+    <?php
+    faq("How do I register a new Channel Partner or Sales Agent?", "Navigate to <strong>Management → Sales Agents & Partners</strong> and click <strong>'+ Add Agent / Partner'</strong>. Choose partner type (Direct Agent vs. Channel Partner), enter contact details, select the calculation base, configure their commission structure, and test the calculation with the live simulator before saving.");
+    faq("Can I add a sales partner directly while creating an invoice?", "Yes! On the invoice form, click the <strong>'+ Add Agent / Partner'</strong> button next to the partner dropdown. The modal opens immediately, lets you define their profile and commission formula, and auto-selects them on the invoice upon saving.");
+    faq("How does the real-time commission simulator work?", "Inside the partner modal and management hub, an interactive simulator allows you to input any sample invoice amount (e.g. AED 25,000). The simulator immediately calculates the exact payout and shows the effective percentage rate, allowing you to preview complex slab bands and custom formulas before publishing.");
+    faq("Where can I track partner sales volume and earned commissions?", "Go to <strong>Reports & Ledger → Client Revenue Analysis</strong> and click the <strong>'By Agent'</strong> tab. This view provides a full breakdown of each agent/partner: Total Invoices, Gross Invoiced Sales, Collected Cash, Accrued Commission, and Collection Efficiency %.");
+    faq("Can an agent be assigned to multiple invoices?", "Yes. When saving an invoice, the system computes the commission earned on that specific invoice and stores it in the database for instant historical auditing.");
+    ?>
+    </div>
 </section>
 
 </div>
