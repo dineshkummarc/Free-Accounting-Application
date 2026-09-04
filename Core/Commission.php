@@ -4,6 +4,25 @@ namespace Core;
 class Commission
 {
     /**
+     * Self-healing schema check: automatically creates sales_agents & commission tables if missing.
+     */
+    public static function ensureTables(\PDO $pdo): void
+    {
+        static $ensured = false;
+        if ($ensured) return;
+        $ensured = true;
+
+        try {
+            $pdo->query("SELECT 1 FROM sales_agents LIMIT 1");
+        } catch (\PDOException $e) {
+            if ($e->getCode() == '42S02' || str_contains($e->getMessage(), 'sales_agents') || str_contains($e->getMessage(), "doesn't exist")) {
+                require_once __DIR__ . '/../migrate.php';
+                run_migrations($pdo);
+            }
+        }
+    }
+
+    /**
      * Calculate commission amount for a given agent and invoice context.
      *
      * @param array $agent Agent row from database

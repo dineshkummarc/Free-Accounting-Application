@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
   invoice_number VARCHAR(60) NOT NULL,
   client_id INT UNSIGNED NOT NULL,
+  agent_id INT UNSIGNED NULL,
   quote_id INT UNSIGNED NULL,
   invoice_date DATE NOT NULL,
   valid_until DATE NULL,
@@ -141,6 +142,8 @@ CREATE TABLE IF NOT EXISTS invoices (
   tax_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
   total DECIMAL(12,2) NOT NULL DEFAULT 0,
   paid_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  commission_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  commission_status ENUM('pending','approved','paid') NOT NULL DEFAULT 'pending',
   notes TEXT NULL,
   terms_public TEXT NULL,
   template_id VARCHAR(60) NOT NULL DEFAULT 'modern_minimal',
@@ -209,6 +212,8 @@ CREATE TABLE IF NOT EXISTS expenses (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
   category_id INT UNSIGNED NULL,
+  client_id INT UNSIGNED NULL,
+  invoice_id INT UNSIGNED NULL,
   vendor_name VARCHAR(190) NOT NULL,
   expense_date DATE NOT NULL,
   subtotal DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -315,7 +320,50 @@ CREATE TABLE IF NOT EXISTS settings (
   PRIMARY KEY (tenant_id, setting_key)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS sales_agents (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
+  name VARCHAR(190) NOT NULL,
+  type ENUM('agent','channel_partner') NOT NULL DEFAULT 'agent',
+  email VARCHAR(190) NULL,
+  phone VARCHAR(60) NULL,
+  company_name VARCHAR(190) NULL,
+  commission_type ENUM('percentage','slab','fixed','milestone','custom') NOT NULL DEFAULT 'percentage',
+  calculation_base ENUM('total','subtotal','paid_amount') NOT NULL DEFAULT 'total',
+  rate DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
+  slab_json JSON NULL,
+  milestone_target DECIMAL(12,2) NULL,
+  milestone_rate DECIMAL(10,4) NULL,
+  custom_formula TEXT NULL,
+  notes TEXT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_tenant (tenant_id),
+  INDEX idx_type (type),
+  INDEX idx_active (is_active)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS commission_rules (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  agent_id INT UNSIGNED NOT NULL,
+  tenant_id INT UNSIGNED NOT NULL DEFAULT 1,
+  name VARCHAR(100) NULL,
+  commission_type ENUM('percentage','slab','fixed','milestone','custom') NOT NULL DEFAULT 'percentage',
+  calculation_base ENUM('total','subtotal','paid_amount') NOT NULL DEFAULT 'total',
+  rate DECIMAL(10,4) NOT NULL DEFAULT 0.0000,
+  slab_json JSON NULL,
+  milestone_target DECIMAL(12,2) NULL,
+  milestone_rate DECIMAL(10,4) NULL,
+  custom_formula TEXT NULL,
+  priority INT NOT NULL DEFAULT 1,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_agent (agent_id),
+  INDEX idx_tenant (tenant_id)
+) ENGINE=InnoDB;
+
 -- Default Tenant Seed
 INSERT IGNORE INTO tenants (id, name, code, currency, country_code, status) 
 VALUES (1, 'OneSol Headquarters', 'onesol-hq', 'AED', 'AE', 'active');
+
 

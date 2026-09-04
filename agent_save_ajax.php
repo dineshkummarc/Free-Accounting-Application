@@ -34,6 +34,9 @@ $newCsrfToken = csrf_token();
 $pdo = $GLOBALS['pdo'];
 $tid = tenant_id();
 
+\Core\Commission::ensureTables($pdo);
+
+$agentId         = !empty($_POST['agent_id']) ? (int)$_POST['agent_id'] : 0;
 $name            = trim($_POST['name'] ?? '');
 $type            = in_array($_POST['type'] ?? '', ['agent', 'channel_partner']) ? $_POST['type'] : 'agent';
 $companyName     = trim($_POST['company_name'] ?? '');
@@ -76,58 +79,157 @@ if (empty($name)) {
 try {
     $pdo->beginTransaction();
 
-    $st = $pdo->prepare('INSERT INTO sales_agents (tenant_id, name, type, email, phone, company_name, commission_type, calculation_base, rate, slab_json, milestone_target, milestone_rate, custom_formula, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-    $st->execute([
-        $tid,
-        $name,
-        $type,
-        $email ?: null,
-        $phone ?: null,
-        $companyName ?: null,
-        $commissionType,
-        $calculationBase,
-        $rate,
-        $slabJson,
-        $milestoneTarget,
-        $milestoneRate,
-        $customFormula ?: null,
-        $notes ?: null
-    ]);
-    $agentId = (int)$pdo->lastInsertId();
+    $isUpdate = false;
+    if ($agentId > 0) {
+        // Verify agent exists and belongs to current tenant
+        $stFind = $pdo->prepare('SELECT id FROM sales_agents WHERE id = ? AND tenant_id = ?');
+        $stFind->execute([$agentId, $tid]);
+        if (!$stFind->fetch()) {
+            $pdo->rollBack();
+            echo json_encode(['success' => false, 'message' => 'Sales Agent or Channel Partner not found.']);
+            exit;
+        }
 
-    // Insert into commission_rules
-    $stRule = $pdo->prepare('INSERT INTO commission_rules (agent_id, tenant_id, name, commission_type, calculation_base, rate, slab_json, milestone_target, milestone_rate, custom_formula, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)');
-    $stRule->execute([
-        $agentId,
-        $tid,
-        'Default Commission Rule',
-        $commissionType,
-        $calculationBase,
-        $rate,
-        $slabJson,
-        $milestoneTarget,
-        $milestoneRate,
-        $customFormula ?: null
-    ]);
+        // Perform UPDATE
+        $stUpdate = $pdo->prepare('UPDATE sales_agents SET 
+            name = ?, 
+            type = ?, 
+            email = ?, 
+            phone = ?, 
+            company_name = ?, 
+            commission_type = ?, 
+            calculation_base = ?, 
+            rate = ?, 
+            slab_json = ?, 
+            milestone_target = ?, 
+            milestone_rate = ?, 
+            custom_formula = ?, 
+            notes = ? 
+            WHERE id = ? AND tenant_id = ?');
+        $stUpdate->execute([
+            $name,
+            $type,
+            $email ?: null,
+            $phone ?: null,
+            $companyName ?: null,
+            $commissionType,
+            $calculationBase,
+            $rate,
+            $slabJson,
+            $milestoneTarget,
+            $milestoneRate,
+            $customFormula ?: null,
+            $notes ?: null,
+            $agentId,
+            $tid
+        ]);
+
+        // Update or insert commission_rules
+        $stRuleCheck = $pdo->prepare('SELECT id FROM commission_rules WHERE agent_id = ? AND tenant_id = ? LIMIT 1');
+        $stRuleCheck->execute([$agentId, $tid]);
+        $existingRuleId = $stRuleCheck->fetchColumn();
+
+        if ($existingRuleId) {
+            $stRule = $pdo->prepare('UPDATE commission_rules SET 
+                commission_type = ?, 
+                calculation_base = ?, 
+                rate = ?, 
+                slab_json = ?, 
+                milestone_target = ?, 
+                milestone_rate = ?, 
+                custom_formula = ? 
+                WHERE id = ? AND tenant_id = ?');
+            $stRule->execute([
+                $commissionType,
+                $calculationBase,
+                $rate,
+                $slabJson,
+                $milestoneTarget,
+                $milestoneRate,
+                $customFormula ?: null,
+                $existingRuleId,
+                $tid
+            ]);
+        } else {
+            $stRule = $pdo->prepare('INSERT INTO commission_rules (agent_id, tenant_id, name, commission_type, calculation_base, rate, slab_json, milestone_target, milestone_rate, custom_formula, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)');
+            $stRule->execute([
+                $agentId,
+                $tid,
+                'Default Commission Rule',
+                $commissionType,
+                $calculationBase,
+                $rate,
+                $slabJson,
+                $milestoneTarget,
+                $milestoneRate,
+                $customFormula ?: null
+            ]);
+        }
+
+        $isUpdate = true;
+        if (function_exists('log_audit')) {
+            log_audit($pdo, 'update_sales_agent', 'sales_agents', $agentId, "Updated $type: $name with $commissionType commission");
+        }
+    } else {
+        // Perform INSERT
+        $st = $pdo->prepare('INSERT INTO sales_agents (tenant_id, name, type, email, phone, company_name, commission_type, calculation_base, rate, slab_json, milestone_target, milestone_rate, custom_formula, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+        $st->execute([
+            $tid,
+            $name,
+            $type,
+            $email ?: null,
+            $phone ?: null,
+            $companyName ?: null,
+            $commissionType,
+            $calculationBase,
+            $rate,
+            $slabJson,
+            $milestoneTarget,
+            $milestoneRate,
+            $customFormula ?: null,
+            $notes ?: null
+        ]);
+        $agentId = (int)$pdo->lastInsertId();
+
+        // Insert into commission_rules
+        $stRule = $pdo->prepare('INSERT INTO commission_rules (agent_id, tenant_id, name, commission_type, calculation_base, rate, slab_json, milestone_target, milestone_rate, custom_formula, priority) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)');
+        $stRule->execute([
+            $agentId,
+            $tid,
+            'Default Commission Rule',
+            $commissionType,
+            $calculationBase,
+            $rate,
+            $slabJson,
+            $milestoneTarget,
+            $milestoneRate,
+            $customFormula ?: null
+        ]);
+
+        if (function_exists('log_audit')) {
+            log_audit($pdo, 'create_sales_agent', 'sales_agents', $agentId, "Created $type: $name with $commissionType commission");
+        }
+    }
 
     $pdo->commit();
 
-    if (function_exists('log_audit')) {
-        log_audit($pdo, 'create_sales_agent', 'sales_agents', $agentId, "Created $type: $name with $commissionType commission");
-    }
-
     $agentData = [
         'id'               => $agentId,
+        'tenant_id'        => $tid,
         'name'             => $name,
         'type'             => $type,
         'type_label'       => $type === 'channel_partner' ? 'Channel Partner' : 'Sales Agent',
         'company_name'     => $companyName,
         'email'            => $email,
         'phone'            => $phone,
+        'notes'            => $notes,
         'commission_type'  => $commissionType,
         'calculation_base' => $calculationBase,
         'rate'             => $rate,
         'slab_json'        => $slabJson ? json_decode($slabJson, true) : null,
+        'milestone_target' => $milestoneTarget,
+        'milestone_rate'   => $milestoneRate,
+        'custom_formula'   => $customFormula,
         'badge'            => \Core\Commission::getBadge([
             'commission_type'  => $commissionType,
             'calculation_base' => $calculationBase,
@@ -138,11 +240,15 @@ try {
         ])
     ];
 
+    $partnerTypeLabel = ($type === 'channel_partner' ? 'Channel Partner' : 'Sales Agent');
+    $actionMsg = $isUpdate ? "$partnerTypeLabel '$name' updated successfully." : "$partnerTypeLabel '$name' added successfully.";
+
     echo json_encode([
-        'success' => true,
-        'message' => ($type === 'channel_partner' ? 'Channel Partner' : 'Sales Agent') . " '$name' added successfully.",
-        'csrf'    => $newCsrfToken,
-        'agent'   => $agentData
+        'success'   => true,
+        'is_update' => $isUpdate,
+        'message'   => $actionMsg,
+        'csrf'      => $newCsrfToken,
+        'agent'     => $agentData
     ]);
 } catch (\PDOException $e) {
     if ($pdo->inTransaction()) {

@@ -45,10 +45,15 @@ foreach ($clients as $c) {
 
 $nextInvNo = $invoice ? $invoice['invoice_number'] : invoice_number($pdo);
 
-// Fetch dedicated Sales Agents & Channel Partners
-$stAgents = $pdo->prepare("SELECT * FROM sales_agents WHERE tenant_id = ? AND is_active = 1 ORDER BY type ASC, name ASC");
-$stAgents->execute([$tid]);
-$agents = $stAgents->fetchAll();
+// Fetch dedicated Sales Agents & Channel Partners (with self-healing auto-migration)
+\Core\Commission::ensureTables($pdo);
+try {
+    $stAgents = $pdo->prepare("SELECT * FROM sales_agents WHERE tenant_id = ? AND is_active = 1 ORDER BY type ASC, name ASC");
+    $stAgents->execute([$tid]);
+    $agents = $stAgents->fetchAll();
+} catch (\PDOException $e) {
+    $agents = [];
+}
 
 page_start($invoice ? 'Edit Tax Invoice' : 'Create Tax Invoice');
 ?>
@@ -128,9 +133,14 @@ page_start($invoice ? 'Edit Tax Invoice' : 'Create Tax Invoice');
             <div class="md:col-span-2">
                 <div class="flex items-center justify-between mb-2">
                     <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider">Sales Agent / Channel Partner</label>
-                    <button type="button" onclick="openAddAgentModal()" class="text-xs font-extrabold text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 px-2.5 py-1 rounded-lg border border-amber-200/80 transition-all flex items-center gap-1.5 shadow-2xs">
-                        <i class="fa-solid fa-user-plus text-3xs"></i> + Add Agent / Partner
-                    </button>
+                    <div class="flex items-center space-x-2">
+                        <button type="button" id="edit_selected_agent_btn" onclick="editSelectedAgentFromInvoice()" class="hidden text-xs font-extrabold text-blue-700 bg-blue-50 hover:bg-blue-100 hover:text-blue-800 px-2.5 py-1 rounded-lg border border-blue-200/80 transition-all flex items-center gap-1.5 shadow-2xs">
+                            <i class="fa-solid fa-pen-to-square text-3xs"></i> Edit Partner
+                        </button>
+                        <button type="button" onclick="openAddAgentModal()" class="text-xs font-extrabold text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 px-2.5 py-1 rounded-lg border border-amber-200/80 transition-all flex items-center gap-1.5 shadow-2xs">
+                            <i class="fa-solid fa-user-plus text-3xs"></i> + Add Agent / Partner
+                        </button>
+                    </div>
                 </div>
                 <div class="relative">
                     <select name="agent_id" id="agent_id_select" onchange="handleAgentSelectChange(this)" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm font-bold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
@@ -558,6 +568,14 @@ document.addEventListener("DOMContentLoaded", () => {
     updateClientCountryVat();
     calculateTotals();
 });
+
+window.salesAgentsMap = <?=json_encode(array_column($agents, null, 'id'), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)?> || {};
+
+function editSelectedAgentFromInvoice() {
+    const sel = document.getElementById('agent_id_select');
+    if (!sel || !sel.value || !window.salesAgentsMap[sel.value]) return;
+    openEditAgentModal(window.salesAgentsMap[sel.value]);
+}
 </script>
 
 <?php

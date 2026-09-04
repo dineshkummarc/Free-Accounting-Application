@@ -6,6 +6,8 @@ require __DIR__ . '/layout.php';
 $pdo = $GLOBALS['pdo'];
 $tid = tenant_id();
 
+\Core\Commission::ensureTables($pdo);
+
 // Handle Status Toggle or Delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     verify_csrf();
@@ -271,6 +273,12 @@ page_start('Sales Agents & Channel Partners');
 
                         <td class="px-6 py-4 text-right">
                             <div class="flex items-center justify-end space-x-2">
+                                <button type="button" 
+                                    onclick='openEditAgentModal(<?=json_encode($ag, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP)?>)' 
+                                    class="p-1.5 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors" 
+                                    title="Edit Partner & Commission">
+                                    <i class="fa-solid fa-pen-to-square"></i>
+                                </button>
                                 <a href="reports_client_sales?view=agent" class="p-1.5 text-slate-400 hover:text-amber-600 rounded-lg hover:bg-slate-100 transition-colors" title="View Sales Performance">
                                     <i class="fa-solid fa-chart-line"></i>
                                 </a>

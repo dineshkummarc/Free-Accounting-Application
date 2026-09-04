@@ -2,7 +2,7 @@
 // Automatic Schema Migrator and Seeder
 require_once __DIR__ . '/bootstrap.php';
 
-if (php_sapi_name() !== 'cli') {
+if (php_sapi_name() !== 'cli' && basename($_SERVER['SCRIPT_FILENAME'] ?? '') === 'migrate.php') {
     require_platform_admin();
 }
 

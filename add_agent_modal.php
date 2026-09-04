@@ -11,11 +11,11 @@
             <div class="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-6 py-4 text-white flex items-center justify-between border-b border-slate-800">
                 <div class="flex items-center space-x-3">
                     <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 text-slate-950 flex items-center justify-center font-black text-base shadow-lg shadow-amber-500/20">
-                        <i class="fa-solid fa-handshake"></i>
+                        <i class="fa-solid fa-handshake" id="agent-modal-icon"></i>
                     </div>
                     <div>
                         <h3 class="text-base font-bold text-white tracking-tight" id="agent-modal-title">Add Sales Agent / Channel Partner</h3>
-                        <p class="text-2xs text-slate-400">Configure partner profile & custom commission calculation rule</p>
+                        <p class="text-2xs text-slate-400" id="agent-modal-subtitle">Configure partner profile & custom commission calculation rule</p>
                     </div>
                 </div>
                 <button type="button" onclick="closeAddAgentModal()" class="text-slate-400 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-slate-800/80">
@@ -26,6 +26,7 @@
             <!-- Modal Form -->
             <form id="quickAddAgentForm" onsubmit="submitQuickAddAgent(event)" class="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
                 <?=csrf_field()?>
+                <input type="hidden" name="agent_id" id="quick_agent_id" value="">
                 
                 <!-- Feedback Alert -->
                 <div id="quickAddAgentAlert" class="hidden rounded-xl p-3 text-xs font-semibold flex items-center space-x-2"></div>
@@ -35,14 +36,14 @@
                     <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Partner Type</label>
                     <div class="grid grid-cols-2 gap-3">
                         <label class="relative flex items-center p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition-all has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50/40 has-[:checked]:ring-2 has-[:checked]:ring-amber-500/20">
-                            <input type="radio" name="type" value="agent" checked class="w-4 h-4 text-amber-600 border-slate-300 focus:ring-amber-500">
+                            <input type="radio" name="type" id="quick_type_agent" value="agent" checked class="w-4 h-4 text-amber-600 border-slate-300 focus:ring-amber-500">
                             <div class="ml-3">
                                 <span class="block text-xs font-extrabold text-slate-900">Direct Sales Agent</span>
                                 <span class="block text-3xs text-slate-500">Internal sales rep / account manager</span>
                             </div>
                         </label>
                         <label class="relative flex items-center p-3 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-50 transition-all has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50/40 has-[:checked]:ring-2 has-[:checked]:ring-amber-500/20">
-                            <input type="radio" name="type" value="channel_partner" class="w-4 h-4 text-amber-600 border-slate-300 focus:ring-amber-500">
+                            <input type="radio" name="type" id="quick_type_channel" value="channel_partner" class="w-4 h-4 text-amber-600 border-slate-300 focus:ring-amber-500">
                             <div class="ml-3">
                                 <span class="block text-xs font-extrabold text-slate-900">Channel Partner / Broker</span>
                                 <span class="block text-3xs text-slate-500">External agency, affiliate or reseller</span>
@@ -59,18 +60,18 @@
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Company / Agency Name</label>
-                        <input type="text" name="company_name" placeholder="e.g. Apex Strategic Partners LLC" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
+                        <input type="text" name="company_name" id="quick_agent_company" placeholder="e.g. Apex Strategic Partners LLC" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
                     </div>
                 </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Email Address</label>
-                        <input type="email" name="email" placeholder="agent@partner.com" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
+                        <input type="email" name="email" id="quick_agent_email" placeholder="agent@partner.com" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Phone Number</label>
-                        <input type="text" name="phone" placeholder="+971 50 000 0000" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
+                        <input type="text" name="phone" id="quick_agent_phone" placeholder="+971 50 000 0000" class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all">
                     </div>
                 </div>
 
@@ -87,15 +88,15 @@
                         <label class="block text-2xs font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Calculate Commission Base On</label>
                         <div class="grid grid-cols-3 gap-2">
                             <label class="flex items-center space-x-2 text-xs font-bold text-slate-700 cursor-pointer bg-white p-2 rounded-lg border border-slate-200 hover:border-amber-400 transition-all">
-                                <input type="radio" name="calculation_base" value="total" checked onchange="handleCommissionParamChange()" class="text-amber-600 focus:ring-amber-500">
+                                <input type="radio" name="calculation_base" id="calc_base_total" value="total" checked onchange="handleCommissionParamChange()" class="text-amber-600 focus:ring-amber-500">
                                 <span>Gross Total (incl. VAT)</span>
                             </label>
                             <label class="flex items-center space-x-2 text-xs font-bold text-slate-700 cursor-pointer bg-white p-2 rounded-lg border border-slate-200 hover:border-amber-400 transition-all">
-                                <input type="radio" name="calculation_base" value="subtotal" onchange="handleCommissionParamChange()" class="text-amber-600 focus:ring-amber-500">
+                                <input type="radio" name="calculation_base" id="calc_base_subtotal" value="subtotal" onchange="handleCommissionParamChange()" class="text-amber-600 focus:ring-amber-500">
                                 <span>Subtotal (excl. VAT)</span>
                             </label>
                             <label class="flex items-center space-x-2 text-xs font-bold text-slate-700 cursor-pointer bg-white p-2 rounded-lg border border-slate-200 hover:border-amber-400 transition-all">
-                                <input type="radio" name="calculation_base" value="paid_amount" onchange="handleCommissionParamChange()" class="text-amber-600 focus:ring-amber-500">
+                                <input type="radio" name="calculation_base" id="calc_base_paid_amount" value="paid_amount" onchange="handleCommissionParamChange()" class="text-amber-600 focus:ring-amber-500">
                                 <span>Paid Amount (Collected)</span>
                             </label>
                         </div>
@@ -227,7 +228,7 @@
                 <!-- Notes / Commission Agreements -->
                 <div>
                     <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Internal Notes & Partner Terms</label>
-                    <textarea name="notes" rows="2" placeholder="e.g. Agreement signed on Jan 2026. Commission paid on 15th of every month." class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"></textarea>
+                    <textarea name="notes" id="quick_agent_notes" rows="2" placeholder="e.g. Agreement signed on Jan 2026. Commission paid on 15th of every month." class="w-full rounded-xl border border-slate-300 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-900 focus:bg-white focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"></textarea>
                 </div>
 
                 <!-- Form Footer Actions -->
@@ -278,10 +279,37 @@ function openAddAgentModal(triggerSelect = null) {
     const backdrop = document.getElementById("addAgentModalBackdrop");
     const box = document.getElementById("addAgentModalBox");
     const alertBox = document.getElementById("quickAddAgentAlert");
+    const form = document.getElementById("quickAddAgentForm");
 
-    alertBox.classList.add("hidden");
-    alertBox.innerHTML = "";
+    if (alertBox) {
+        alertBox.classList.add("hidden");
+        alertBox.innerHTML = "";
+    }
 
+    if (form) form.reset();
+
+    // Reset Agent ID
+    const idInput = document.getElementById("quick_agent_id");
+    if (idInput) idInput.value = "";
+
+    // Reset Header & Button Text for Add Mode
+    const titleEl = document.getElementById("agent-modal-title");
+    const subtitleEl = document.getElementById("agent-modal-subtitle");
+    const btnText = document.getElementById("quickAddAgentBtnText");
+    const modalIcon = document.getElementById("agent-modal-icon");
+
+    if (titleEl) titleEl.textContent = "Add Sales Agent / Channel Partner";
+    if (subtitleEl) subtitleEl.textContent = "Configure partner profile & custom commission calculation rule";
+    if (btnText) btnText.textContent = "Save Agent & Select";
+    if (modalIcon) modalIcon.className = "fa-solid fa-handshake";
+
+    slabTiers = [
+        { from: 0, to: 10000, rate: 3.0 },
+        { from: 10000, to: 50000, rate: 5.0 },
+        { from: 50000, to: null, rate: 8.0 }
+    ];
+
+    setAgentCommType('percentage');
     renderSlabTiers();
     handleCommissionParamChange();
 
@@ -299,6 +327,117 @@ function openAddAgentModal(triggerSelect = null) {
     }, 20);
 }
 
+function openEditAgentModal(agentData) {
+    if (!agentData) return;
+
+    const modal = document.getElementById("addAgentModal");
+    const backdrop = document.getElementById("addAgentModalBackdrop");
+    const box = document.getElementById("addAgentModalBox");
+    const alertBox = document.getElementById("quickAddAgentAlert");
+    const form = document.getElementById("quickAddAgentForm");
+
+    if (alertBox) {
+        alertBox.classList.add("hidden");
+        alertBox.innerHTML = "";
+    }
+
+    if (form) form.reset();
+
+    // Set Hidden Agent ID
+    const idInput = document.getElementById("quick_agent_id");
+    if (idInput) idInput.value = agentData.id || '';
+
+    // Update Header and Button Text for Edit Mode
+    const titleEl = document.getElementById("agent-modal-title");
+    const subtitleEl = document.getElementById("agent-modal-subtitle");
+    const btnText = document.getElementById("quickAddAgentBtnText");
+    const modalIcon = document.getElementById("agent-modal-icon");
+
+    const isChannel = (agentData.type === 'channel_partner');
+    if (titleEl) titleEl.textContent = isChannel ? "Edit Channel Partner / Broker" : "Edit Direct Sales Agent";
+    if (subtitleEl) subtitleEl.textContent = "Update partner information and customized commission rules";
+    if (btnText) btnText.textContent = "Update Partner";
+    if (modalIcon) modalIcon.className = "fa-solid fa-pen-to-square";
+
+    // Populate Fields
+    const nameInput = document.getElementById("quick_agent_name");
+    const compInput = document.getElementById("quick_agent_company");
+    const emailInput = document.getElementById("quick_agent_email");
+    const phoneInput = document.getElementById("quick_agent_phone");
+    const notesInput = document.getElementById("quick_agent_notes");
+
+    if (nameInput) nameInput.value = agentData.name || '';
+    if (compInput) compInput.value = agentData.company_name || '';
+    if (emailInput) emailInput.value = agentData.email || '';
+    if (phoneInput) phoneInput.value = agentData.phone || '';
+    if (notesInput) notesInput.value = agentData.notes || '';
+
+    // Set Partner Type Radio
+    const pType = agentData.type || 'agent';
+    const typeRadio = form.querySelector(`input[name="type"][value="${pType}"]`);
+    if (typeRadio) typeRadio.checked = true;
+
+    // Set Calculation Base Radio
+    const calcBase = agentData.calculation_base || 'total';
+    const baseRadio = form.querySelector(`input[name="calculation_base"][value="${calcBase}"]`);
+    if (baseRadio) baseRadio.checked = true;
+
+    // Set Commission Type and Parameters
+    const cType = agentData.commission_type || 'percentage';
+    setAgentCommType(cType);
+
+    if (cType === 'percentage') {
+        const rateEl = document.getElementById("agent_rate_percentage");
+        if (rateEl) rateEl.value = parseFloat(agentData.rate || 0).toFixed(2);
+    } else if (cType === 'slab') {
+        let slabs = agentData.slab_json;
+        if (typeof slabs === 'string') {
+            try { slabs = JSON.parse(slabs); } catch(e) { slabs = []; }
+        }
+        if (Array.isArray(slabs) && slabs.length > 0) {
+            slabTiers = slabs.map(s => ({
+                from: parseFloat(s.from || 0),
+                to: (s.to !== null && s.to !== undefined && s.to !== '') ? parseFloat(s.to) : null,
+                rate: parseFloat(s.rate || 0)
+            }));
+        } else {
+            slabTiers = [
+                { from: 0, to: 10000, rate: 3.0 },
+                { from: 10000, to: 50000, rate: 5.0 },
+                { from: 50000, to: null, rate: 8.0 }
+            ];
+        }
+        renderSlabTiers();
+    } else if (cType === 'fixed') {
+        const fixedEl = document.getElementById("agent_rate_fixed");
+        if (fixedEl) fixedEl.value = parseFloat(agentData.rate || 0).toFixed(2);
+    } else if (cType === 'milestone') {
+        const baseRateEl = document.getElementById("agent_milestone_base_rate");
+        const targetEl = document.getElementById("agent_milestone_target");
+        const achRateEl = document.getElementById("agent_milestone_rate");
+        if (baseRateEl) baseRateEl.value = parseFloat(agentData.rate || 0).toFixed(2);
+        if (targetEl) targetEl.value = parseFloat(agentData.milestone_target || 0);
+        if (achRateEl) achRateEl.value = parseFloat(agentData.milestone_rate || 0).toFixed(2);
+    } else if (cType === 'custom') {
+        const customEl = document.getElementById("agent_custom_formula");
+        if (customEl) customEl.value = agentData.custom_formula || '';
+    }
+
+    handleCommissionParamChange();
+
+    modal.classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+
+    setTimeout(() => {
+        backdrop.classList.remove("opacity-0");
+        backdrop.classList.add("opacity-100");
+        box.classList.remove("scale-95", "opacity-0");
+        box.classList.add("scale-100", "opacity-100");
+        
+        if (nameInput) nameInput.focus();
+    }, 20);
+}
+
 function closeAddAgentModal() {
     const modal = document.getElementById("addAgentModal");
     const backdrop = document.getElementById("addAgentModalBackdrop");
@@ -313,6 +452,7 @@ function closeAddAgentModal() {
         modal.classList.add("hidden");
         document.body.style.overflow = "auto";
         document.getElementById("quickAddAgentForm").reset();
+        document.getElementById("quick_agent_id").value = "";
         setAgentCommType('percentage');
 
         // Revert any agent select that has __add_new_agent__ back to previous selection
@@ -521,10 +661,17 @@ function submitQuickAddAgent(e) {
                 });
             }
 
-            // Add new option to all agent_id selects on the page
+            // Update or add option in all agent_id selects on the page
             document.querySelectorAll('select[name="agent_id"]').forEach(sel => {
                 let existingOpt = sel.querySelector(`option[value="${newAgent.id}"]`);
-                if (!existingOpt) {
+                if (existingOpt) {
+                    existingOpt.textContent = `${newAgent.name} (${newAgent.type_label} • ${newAgent.badge})`;
+                    existingOpt.dataset.badge = newAgent.badge;
+                    existingOpt.dataset.commissionType = newAgent.commission_type;
+                    existingOpt.dataset.rate = newAgent.rate;
+                    existingOpt.dataset.calculationBase = newAgent.calculation_base;
+                    existingOpt.dataset.slabJson = JSON.stringify(newAgent.slab_json || []);
+                } else {
                     const opt = document.createElement("option");
                     opt.value = newAgent.id;
                     opt.textContent = `${newAgent.name} (${newAgent.type_label} • ${newAgent.badge})`;
@@ -543,10 +690,15 @@ function submitQuickAddAgent(e) {
                     }
                 }
 
-                // Auto-select newly created agent
+                // Auto-select newly created or updated agent
                 sel.value = newAgent.id;
                 sel.dataset.lastSelected = newAgent.id;
             });
+
+            // Update JS lookup map if present on page
+            if (typeof window.salesAgentsMap !== 'undefined' && window.salesAgentsMap) {
+                window.salesAgentsMap[newAgent.id] = newAgent;
+            }
 
             updateAgentCommissionBadgePreview();
 
@@ -554,7 +706,7 @@ function submitQuickAddAgent(e) {
             const toast = document.getElementById("quickAgentToast");
             const toastMsg = document.getElementById("quickAgentToastMsg");
             if (toast && toastMsg) {
-                toastMsg.textContent = data.message || "Agent created successfully";
+                toastMsg.textContent = data.message || (data.is_update ? "Partner updated successfully" : "Agent created successfully");
                 toast.classList.remove("opacity-0", "translate-y-10", "pointer-events-none");
                 toast.classList.add("opacity-100", "translate-y-0");
 
@@ -565,6 +717,13 @@ function submitQuickAddAgent(e) {
             }
 
             closeAddAgentModal();
+
+            // If on the Sales Agents directory page, reload to refresh the table and statistics
+            if (window.location.pathname.includes('sales_agents')) {
+                setTimeout(() => {
+                    window.location.reload();
+                }, 600);
+            }
         } else {
             alertBox.className = "rounded-xl p-3 text-xs font-semibold flex items-center space-x-2 bg-rose-50 border border-rose-200 text-rose-800";
             alertBox.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-500"></i><span>${data.message || 'Failed to save sales agent'}</span>`;
@@ -585,14 +744,20 @@ function submitQuickAddAgent(e) {
 function updateAgentCommissionBadgePreview() {
     const sel = document.querySelector('select[name="agent_id"]');
     const badgeContainer = document.getElementById('agent_commission_preview_badge');
-    if (!sel || !badgeContainer) return;
+    const editBtn = document.getElementById('edit_selected_agent_btn');
+    if (!sel) return;
 
     const opt = sel.options[sel.selectedIndex];
     if (!opt || !sel.value || sel.value === '__add_new_agent__') {
-        badgeContainer.classList.add('hidden');
-        badgeContainer.innerHTML = '';
+        if (badgeContainer) {
+            badgeContainer.classList.add('hidden');
+            badgeContainer.innerHTML = '';
+        }
+        if (editBtn) editBtn.classList.add('hidden');
         return;
     }
+
+    if (editBtn) editBtn.classList.remove('hidden');
 
     const badge = opt.dataset.badge || 'Commission Configured';
     const commType = opt.dataset.commissionType || 'percentage';
